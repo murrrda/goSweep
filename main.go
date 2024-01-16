@@ -1,10 +1,9 @@
 package main
 
 import (
-    "log"
+    "fmt"
     "net"
     "os"
-    //"sync"
     "time"
 
     "golang.org/x/net/icmp"
@@ -14,14 +13,16 @@ import (
 
 func main() {
     if len(os.Args) != 2 {
-        log.Fatal("You should provide IP address in CIDR notation")
+        fmt.Println("You should provide IP address in CIDR notation")
+        os.Exit(1)
     }
     cidrInput := os.Args[1]
 
     // parsing input
     ipNet, err := ParseCIDR(cidrInput)
     if err != nil {
-        log.Fatal("Error parsing -- you should provide input in CIDR notation")
+        fmt.Println("Error parsing -- you should provide input in CIDR notation")
+        os.Exit(1)
     }
 
     // calculating first and last IP in range
@@ -64,14 +65,14 @@ func pingIP(ip string) (string, error) {
     // resolving Ip addr
     ipAddr, err := net.ResolveIPAddr("ip", ip)
     if err != nil {
-        log.Println("Error resolving IP: ", err)
+        fmt.Println("Error resolving IP: ", err)
         return "", err
     }
 
     // creating socket
     conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
     if err != nil {
-        log.Println("Error creating socket: ", err)
+        fmt.Println("Error creating socket: ", err)
         return "", err
     }
     defer conn.Close()
@@ -90,7 +91,7 @@ func pingIP(ip string) (string, error) {
     // converting message to bytes (Marshaling)
     messageByted, err := message.Marshal(nil)
     if err != nil {
-        log.Println("Error Marshaling ICMP message: ", err)
+        fmt.Println("Error Marshaling ICMP message: ", err)
         return "", err
     }
 
@@ -99,7 +100,7 @@ func pingIP(ip string) (string, error) {
     // send ICMP package
     _, err = conn.WriteTo(messageByted, ipAddr)
     if err != nil {
-        log.Println("Error sending ICMP message: ", err)
+        fmt.Println("Error sending ICMP message: ", err)
         return "", err
     }
 
@@ -111,12 +112,12 @@ func pingIP(ip string) (string, error) {
     // Parse the received ICMP packet
     receivedMsg, err := icmp.ParseMessage(1, replyBuffer[:icmpInt])
     if err != nil {
-        log.Println("Error parsing ICMP reply: ", err)
+        fmt.Println("Error parsing ICMP reply: ", err)
         return "", err
     }
 
     // Check if the received packet is an echo reply
-    log.Printf("Received ICMP type: %v from %v\n", receivedMsg.Type, ip)
+    fmt.Printf("Received ICMP type: %v from %v\n", receivedMsg.Type, ip)
 
     latency := time.Since(startTime)
 
