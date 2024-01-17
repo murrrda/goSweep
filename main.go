@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 )
@@ -20,7 +21,7 @@ func main() {
     // parsing input
     ipNet, err := ParseCIDR(cidrInput)
     if err != nil {
-        fmt.Println("Error parsing -- you should provide input in CIDR notation")
+        fmt.Printf("%v\n", err)
         os.Exit(1)
     }
 
@@ -51,6 +52,10 @@ func ParseCIDR(cidr string) (*net.IPNet, error) {
     if err != nil {
         return nil, err
     }
+    if strings.HasSuffix(ipNet.String(), "32") {
+        return nil, fmt.Errorf("Provide a valid mask")    
+    }
+
     ipNet.IP = ip
     return ipNet, nil
 }
