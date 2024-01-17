@@ -7,9 +7,6 @@ import (
 	"os/exec"
 	"sync"
 	"time"
-
-	//"golang.org/x/net/icmp"
-	//"golang.org/x/net/ipv4"
 )
 
 
@@ -37,12 +34,14 @@ func main() {
 
     var wg sync.WaitGroup
     timeStart := time.Now()
+
     // Iterate over the usable IP addresses in the range
     for ip := nextIP(start); !ip.Equal(end); ip = nextIP(ip) {
         wg.Add(1)
         go pingIP(&wg, ip.String())
     }
     wg.Wait()
+
     elapsed := time.Since(timeStart)
     fmt.Printf("Execution time: %v\n", elapsed.String())
 }
