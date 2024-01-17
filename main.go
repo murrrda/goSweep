@@ -1,13 +1,15 @@
 package main
 
 import (
-    "fmt"
-    "net"
-    "os"
-    "time"
+	"fmt"
+	"net"
+	"os"
+	"os/exec"
+	"sync"
+	"time"
 
-    "golang.org/x/net/icmp"
-    "golang.org/x/net/ipv4"
+	//"golang.org/x/net/icmp"
+	//"golang.org/x/net/ipv4"
 )
 
 
@@ -33,10 +35,16 @@ func main() {
         end[i] |= ^ipNet.Mask[i]
     }
 
+    var wg sync.WaitGroup
+    timeStart := time.Now()
     // Iterate over the usable IP addresses in the range
     for ip := nextIP(start); !ip.Equal(end); ip = nextIP(ip) {
-        pingIP(ip.String())
+        wg.Add(1)
+        go pingIP(&wg, ip.String())
     }
+    wg.Wait()
+    elapsed := time.Since(timeStart)
+    fmt.Printf("Execution time: %v\n", elapsed.String())
 }
 
 func ParseCIDR(cidr string) (*net.IPNet, error) {
@@ -61,65 +69,14 @@ func nextIP(ip net.IP) net.IP {
     return next
 }
 
-func pingIP(ip string) (string, error) {
-    // resolving Ip addr
-    ipAddr, err := net.ResolveIPAddr("ip", ip)
+func pingIP(wg *sync.WaitGroup, ip string) {
+    defer wg.Done()
+
+    cmd := exec.Command("ping", "-c", "1", ip)
+    _, err := cmd.CombinedOutput()
     if err != nil {
-        fmt.Println("Error resolving IP: ", err)
-        return "", err
+        //fmt.Printf("Error pinging %v\n", ip)
+    } else {
+        fmt.Printf("Echo reply from %v\n", ip)
     }
-
-    // creating socket
-    conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
-    if err != nil {
-        fmt.Println("Error creating socket: ", err)
-        return "", err
-    }
-    defer conn.Close()
-
-    // creating ICMP message
-    message := icmp.Message {
-        Type:     ipv4.ICMPTypeEcho,
-        Code:     0,
-        Body:     &icmp.Echo {
-            ID:   os.Getpid() & 0xffff,
-            Seq:  1,
-            Data: []byte("Hello-Friend!"),
-        },
-    }
-
-    // converting message to bytes (Marshaling)
-    messageByted, err := message.Marshal(nil)
-    if err != nil {
-        fmt.Println("Error Marshaling ICMP message: ", err)
-        return "", err
-    }
-
-     // start counting time
-    startTime := time.Now()
-    // send ICMP package
-    _, err = conn.WriteTo(messageByted, ipAddr)
-    if err != nil {
-        fmt.Println("Error sending ICMP message: ", err)
-        return "", err
-    }
-
-    replyBuffer := make([]byte, 1500)
-
-    // receiving ICMP reply
-    icmpInt, _, _ := conn.ReadFrom(replyBuffer)
-
-    // Parse the received ICMP packet
-    receivedMsg, err := icmp.ParseMessage(1, replyBuffer[:icmpInt])
-    if err != nil {
-        fmt.Println("Error parsing ICMP reply: ", err)
-        return "", err
-    }
-
-    // Check if the received packet is an echo reply
-    fmt.Printf("Received ICMP type: %v from %v\n", receivedMsg.Type, ip)
-
-    latency := time.Since(startTime)
-
-    return ip + " time: " +latency.String(), nil
 }
