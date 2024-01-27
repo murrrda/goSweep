@@ -11,7 +11,7 @@ func helloWorldPage(w http.ResponseWriter, r *http.Request) {
 
 func main() {
     http.HandleFunc("/", helloWorldPage)
-    err := http.ListenAndServe(":42069", nil)
+    err := http.ListenAndServe("", nil)
     if err != nil {
         fmt.Printf("%v\n", err)
     }
