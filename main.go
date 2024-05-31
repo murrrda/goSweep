@@ -32,8 +32,8 @@ func main() {
 		end[i] |= ^ipNet.Mask[i]
 	}
 
-	var wg sync.WaitGroup
 	timeStart := time.Now()
+	var wg sync.WaitGroup
 
 	// Iterate over the usable IP addresses in the range
 	for ip := nextIP(start); !ip.Equal(end); ip = nextIP(ip) {
@@ -76,6 +76,7 @@ func pingIP(wg *sync.WaitGroup, ip string) {
 	defer wg.Done()
 
 	cmd := exec.Command("ping", "-c", "1", ip)
+
 	_, err := cmd.CombinedOutput()
 	if err != nil {
 		//fmt.Printf("Error pinging %v\n", ip)

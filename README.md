@@ -9,6 +9,7 @@ To use goSweep:
 ```bash
 ./goSweep 192.168.0.1/24
 ```
+
 ## Features
 
 ### 1. IP Range Calculation
@@ -21,4 +22,4 @@ Using the Linux ping command, goSweep sweeps across the calculated network addre
 
 ### 3. Concurrency
 
-Implemented Concurrency to speed things up :)
+goSweep leverages concurrency to significantly enhance the speed of network sweeps.
