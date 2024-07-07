@@ -50,6 +50,7 @@ func pingIP(wg *sync.WaitGroup, ip string) {
 		fmt.Printf("Echo reply from %v\n", ip)
 	}
 }
+
 func getHosts(cidr string) ([]string, error) {
 	ip, ipNet, err := net.ParseCIDR(cidr)
 
