@@ -16,7 +16,7 @@ func main() {
 	if (*subnetFlag == "" && *portScanFlag == "") || (*subnetFlag != "" && *portScanFlag != "") {
 		fmt.Println("Usage: ")
 		flag.PrintDefaults()
-		fmt.Println("For port scan: -ps <target> <port-range>")
+		fmt.Println("For port scan: -ps <target> <port:range>")
 		os.Exit(1)
 	}
 
