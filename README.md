@@ -1,5 +1,7 @@
 # goSweep
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/murrrda/goSweep)](https://goreportcard.com/report/github.com/murrrda/goSweep)
+
 > [!CAUTION]
 > Remember to use responsibly. Let's not accidently cause a network meltdown, shall we?
 
@@ -13,11 +15,16 @@ goSweep is a command-line tool written in Go for network scanning that includes 
 ## Installation
 
 To install goSweep, make sure you have Go installed and set up on your machine. Then:
-``` sh
-go get github.com/murrrda/goSweep
+
+```sh
+git clone https://github.com/murrrda/goSweep.git
+cd goSweep
+go build -o goSweep cmd/goSweep/main.go
 ```
+
 or
-``` sh
+
+```sh
 git clone https://github.com/murrrda/goSweep.git
 cd goSweep
 go build -o goSweep cmd/goSweep/main.go
@@ -28,36 +35,43 @@ go build -o goSweep cmd/goSweep/main.go
 ### Port scanning (-ps)
 
 To perform a port scan (requires root privileges):
-``` sh
+
+```sh
 ./goSweep -ps <host> <port-range>
 ```
+
 - **\<host\>**: The IP address or hostname of the target.
 - **\<port-range\>**: The range of ports to scan (e.g., **1:1024**).
 
 Example:
-``` sh
-./goSweep -ps scanme.nmap.org 1:80
+
+```sh
+sudo ./goSweep -ps scanme.nmap.org 1:80
 ```
 
 ### Ping sweeping (-s)
 
-To perform ping sweep, use the following command:
-``` sh
+To perform ping sweep (requires root privileges):
+
+```sh
 ./goSweep -s <network>
 ```
-- **\<network\>**: The IP range to sweep (e.g., 192.168.1.0/24). Note: network must be provided in CIDR notation
+
+- **\<network\>**: The IP range to sweep (e.g., 192.168.1.0/24). **Note**: network must be provided in CIDR notation
 
 Example:
-``` sh
-./goSweep -s 192.168.0.1/24
+
+```sh
+sudo ./goSweep -s 192.168.0.1/24
 ```
 
 ## Example output
 
 #### Port scanning
 
-![Port scan](./port-scan.png)
+![Port scan](./port_scan.png)
 
 #### Ping sweep
 
-![Ping sweep](./ping-sweep.png)
+![Ping sweep](./ping_sweep.png)
+

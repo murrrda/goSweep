@@ -1,25 +1,19 @@
-package scanner
+package portscan
 
 import (
 	"fmt"
 	"math/rand"
 	"net"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/murrrda/goSweep/pkg/helpers"
 )
 
 type state uint8
 
-const (
-	reset    = "\033[0m"
-	red      = "\033[31m"
-	green    = "\033[32m"
-	nWorkers = 500
-)
+const portWorkers = 300
 
 const (
 	OPEN state = iota
@@ -30,22 +24,29 @@ const (
 
 type scan struct {
 	Port  layers.TCPPort
-	State state // OPEN(0), CLOSE(1), FILTERED(2)
+	State state // OPEN(0), CLOSE(1), FILTERED
 }
 
 func TcpScan(host string, startPort, endPort int) {
-	localAddr, err := getLocalAddr()
+	localAddr, err := helpers.GetLocalAddr()
 	if err != nil {
-		fmt.Println(red + err.Error() + reset)
+		fmt.Println(helpers.Red + err.Error() + helpers.Reset)
 		return
 	}
+	nPorts := endPort - startPort + 1
 
 	ports := make(chan int)
 	res := make(chan scan)
 
 	// spawn workers
-	for i := 0; i < nWorkers; i++ {
-		go worker(res, ports, host, localAddr)
+	if nPorts > portWorkers {
+		for i := 0; i < portWorkers; i++ {
+			go worker(res, ports, host, localAddr)
+		}
+	} else {
+		for i := 0; i < nPorts; i++ {
+			go worker(res, ports, host, localAddr)
+		}
 	}
 
 	timeStart := time.Now()
@@ -57,20 +58,20 @@ func TcpScan(host string, startPort, endPort int) {
 		close(ports)
 	}()
 
-	nPorts := endPort - startPort + 1
-	nFPorts := 0
-	for i := 1; i <= nPorts; i++ {
+	nFPorts := 0 // number of filtered ports
+	for i := 0; i < nPorts; i++ {
 		r := <-res
 		switch r.State {
 		case OPEN:
-			fmt.Printf("%sPort %s OPEN\n%s", green, r.Port.String(), reset)
+			fmt.Printf("%sPort %s OPEN\n%s", helpers.Green, r.Port.String(), helpers.Reset)
 		case FILTERED:
 			nFPorts++
 		}
 	}
 
 	fmt.Printf("%d filtered ports (timeout)\n", nFPorts)
-	fmt.Printf("Execution time: %s\n", time.Since(timeStart))
+	fmt.Printf("Execution time: %.2f seconds\n", time.Since(timeStart).Seconds())
+	close(res)
 }
 
 func worker(res chan scan, ports chan int, host string, localAddr *net.UDPAddr) {
@@ -93,7 +94,7 @@ func sendSynAndGetRes(localAddr *net.UDPAddr, dstIp string, dstPort uint16) (sta
 
 	dstIpNet := net.ParseIP(dstIp)
 	if dstIpNet == nil {
-		return ERR, fmt.Errorf(red + "Couln't parse dest ip" + reset)
+		return ERR, fmt.Errorf(helpers.Red + "Couln't parse dest ip" + helpers.Reset)
 	}
 
 	ip := &layers.IPv4{
@@ -111,7 +112,7 @@ func sendSynAndGetRes(localAddr *net.UDPAddr, dstIp string, dstPort uint16) (sta
 	}
 
 	if err := tcp.SetNetworkLayerForChecksum(ip); err != nil {
-		return ERR, fmt.Errorf(red + "Couldn't compute the checksum" + reset + "\n" + err.Error())
+		return ERR, fmt.Errorf(helpers.Red + "Couldn't compute the checksum" + helpers.Reset + "\n" + err.Error())
 
 	}
 	buf := gopacket.NewSerializeBuffer()
@@ -120,16 +121,16 @@ func sendSynAndGetRes(localAddr *net.UDPAddr, dstIp string, dstPort uint16) (sta
 		ComputeChecksums: true,
 	}
 	if err := gopacket.SerializeLayers(buf, opts, tcp); err != nil {
-		fmt.Println(red + "Couldn't serialize layer" + reset)
+		fmt.Println(helpers.Red + "Couldn't serialize layer" + helpers.Reset)
 		fmt.Println(err)
-		return ERR, fmt.Errorf(red + "Couldn't serialize layer" + reset + "\n" + err.Error())
+		return ERR, fmt.Errorf(helpers.Red + "Couldn't serialize layer" + helpers.Reset + "\n" + err.Error())
 	}
 
 	conn, err := net.ListenPacket("ip4:tcp", "0")
 	if err != nil {
-		fmt.Println(red + "Couldn't listen" + reset)
+		fmt.Println(helpers.Red + "Couldn't listen" + helpers.Reset)
 		fmt.Println(err)
-		return ERR, fmt.Errorf(red + "Couldn't serialize layer" + reset + "\n" + err.Error())
+		return ERR, fmt.Errorf(helpers.Red + "Couldn't serialize layer" + helpers.Reset + "\n" + err.Error())
 	}
 	defer conn.Close()
 
@@ -151,51 +152,14 @@ func sendSynAndGetRes(localAddr *net.UDPAddr, dstIp string, dstPort uint16) (sta
 			packet := gopacket.NewPacket(b[:n], layers.LayerTypeTCP, gopacket.Default)
 			if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
 				tcp, _ := tcpLayer.(*layers.TCP)
-
-				if tcp.DstPort == layers.TCPPort(srcPort) && tcp.SYN && tcp.ACK {
-					return OPEN, nil
+				if tcp.DstPort == layers.TCPPort(srcPort) {
+					if tcp.SYN && tcp.ACK {
+						return OPEN, nil
+					} else if tcp.RST {
+						return CLOSED, nil
+					}
 				}
 			}
 		}
 	}
-}
-
-func getLocalAddr() (*net.UDPAddr, error) {
-	// 8.8.8.8 - Google DNS server
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err != nil {
-		return nil, fmt.Errorf(err.Error())
-	}
-	defer conn.Close()
-
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	return localAddr, nil
-}
-
-func ParsePortRange(portRange string) (int, int, error) {
-	sePorts := strings.Split(portRange, ":")
-
-	if len(sePorts) != 2 {
-		return 0, 0, fmt.Errorf("You should provide port range <starting_port:end_port>")
-	}
-
-	startPort, err := strconv.Atoi(sePorts[0])
-	if err != nil {
-		return 0, 0, fmt.Errorf("You should provide port range <starting_port:end_port>")
-	}
-
-	if startPort < 1 || startPort > 65535 {
-		return 0, 0, fmt.Errorf("Ports should be in range 1:65535")
-	}
-
-	endPort, err := strconv.Atoi(sePorts[1])
-	if err != nil {
-		return 0, 0, fmt.Errorf("You should provide port range <starting_port:end_port>")
-	}
-
-	if endPort < 1 || endPort > 65535 {
-		return 0, 0, fmt.Errorf("Ports should be in range 1:65535")
-	}
-
-	return startPort, endPort, nil
 }
