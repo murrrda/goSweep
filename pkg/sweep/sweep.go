@@ -109,7 +109,7 @@ func PingIP(dstIp *net.IP) (bool, error) {
 	}
 
 	// Listen for ICMP packets
-	conn, err := net.ListenPacket("ip4:icmp", "0")
+	conn, err := net.ListenPacket("ip4:icmp", "0.0.0.0")
 	if err != nil {
 		fmt.Println("Couldn't listen")
 		return false, fmt.Errorf("couldn't listen: %w", err)

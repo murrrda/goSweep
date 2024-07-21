@@ -126,7 +126,7 @@ func sendSynAndGetRes(localAddr *net.UDPAddr, dstIp string, dstPort uint16) (sta
 		return ERR, fmt.Errorf(helpers.Red + "Couldn't serialize layer" + helpers.Reset + "\n" + err.Error())
 	}
 
-	conn, err := net.ListenPacket("ip4:tcp", "0")
+	conn, err := net.ListenPacket("ip4:tcp", "0.0.0.0")
 	if err != nil {
 		fmt.Println(helpers.Red + "Couldn't listen" + helpers.Reset)
 		fmt.Println(err)
