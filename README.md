@@ -22,14 +22,6 @@ cd goSweep
 go build -o goSweep cmd/goSweep/main.go
 ```
 
-or
-
-```sh
-git clone https://github.com/murrrda/goSweep.git
-cd goSweep
-go build -o goSweep cmd/goSweep/main.go
-```
-
 ## Usage
 
 ### Port scanning (-ps)
