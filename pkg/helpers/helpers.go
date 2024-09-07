@@ -20,7 +20,7 @@ const (
 )
 
 // Find local IP address
-func GetLocalAddr() (*net.UDPAddr, error) {
+func GetLocalIp() (*net.UDPAddr, error) {
 	// 8.8.8.8 - Google DNS server
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {

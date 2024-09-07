@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 
+	"github.com/murrrda/goSweep/pkg/dns"
 	"github.com/murrrda/goSweep/pkg/helpers"
 	"github.com/murrrda/goSweep/pkg/portscan"
 	"github.com/murrrda/goSweep/pkg/sweep"
@@ -14,14 +15,15 @@ import (
 func main() {
 	subnetFlag := flag.String("s", "", "Network to ping sweep (e.g., 192.168.0.1/24)")
 	portScanFlag := flag.String("ps", "", "Target host for port scanning (e.g., example.com, 192.168.0.1) and port range start:end (e.g. 1:1024)")
+	dnsFlag := flag.String("d", "", "Domain(e.g. example.com) and path to wordlist")
 
 	flag.Parse()
 
-	if (*subnetFlag == "" && *portScanFlag == "") || (*subnetFlag != "" && *portScanFlag != "") {
-		fmt.Println("Usage: ")
-		flag.PrintDefaults()
-		os.Exit(1)
-	}
+	// if (*subnetFlag == "" && *portScanFlag == "") || (*subnetFlag != "" && *portScanFlag != "") {
+	// 	fmt.Println("Usage: ")
+	// 	flag.PrintDefaults()
+	// 	os.Exit(1)
+	// }
 
 	if *subnetFlag != "" {
 		sweep.PingSweep(*subnetFlag)
@@ -47,6 +49,13 @@ func main() {
 		fmt.Println("Performing SYN port scan for ", *portScanFlag, "(", ip, ")")
 		portscan.TcpScan(ip, startPort, endPort)
 
+	} else if *dnsFlag != "" {
+		args := flag.Args()
+		if len(args) != 1 {
+			flag.Usage()
+			os.Exit(1)
+		}
+		dns.SubdomainDiscovery(*dnsFlag, args[0])
 	} else {
 		flag.Usage()
 	}

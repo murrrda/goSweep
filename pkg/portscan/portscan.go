@@ -28,7 +28,7 @@ type scan struct {
 }
 
 func TcpScan(host string, startPort, endPort int) {
-	localAddr, err := helpers.GetLocalAddr()
+	localAddr, err := helpers.GetLocalIp()
 	if err != nil {
 		fmt.Println(helpers.Red + err.Error() + helpers.Reset)
 		return
