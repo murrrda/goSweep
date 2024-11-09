@@ -55,7 +55,10 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
-		dns.SubdomainDiscovery(*dnsFlag, args[0])
+		dns.SubdomainDiscovery(dns.Input{
+			Domain: *dnsFlag,
+			File:   args[0],
+		})
 	} else {
 		flag.Usage()
 	}
