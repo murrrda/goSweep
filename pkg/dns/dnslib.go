@@ -139,16 +139,13 @@ func DnsQueryTypeCNAME(domain string, dnsServer string) (string, error) {
 		return "", err
 	}
 
-	var cname string
-	// len(response.Answers) == 0 means no cname
-	// (should contain A and/or AAAA record)
-	for _, answer := range response.Answers {
-		if answer.Header.Type == dnsmessage.TypeCNAME {
-			cname = answer.Body.(*dnsmessage.CNAMEResource).CNAME.String()
-		}
+	if len(response.Answers) == 0 || response.Answers[0].Header.Type != dnsmessage.TypeCNAME {
+		return "", nil
 	}
 
-	return cname, nil
+	foundCNAME := response.Answers[0].Body.(*dnsmessage.CNAMEResource).CNAME.String()
+
+	return foundCNAME, nil
 }
 
 func DnsQueryTypeA(domain string, dnsServer string) ([]string, error) {
