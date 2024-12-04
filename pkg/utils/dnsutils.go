@@ -1,17 +1,23 @@
-package dns
+package utils
 
 import (
+	"fmt"
 	"net"
 	"time"
 
 	"golang.org/x/net/dns/dnsmessage"
 )
 
+// Wrapper around dnsmessage.Message.
+// Purpose is to attach sendQuery method to it
+// and encapsulate writing and reading to and from the socket
 type dnsMsg struct {
 	msg dnsmessage.Message
 }
 
+// Method to send dns query, receive and parse response.
 func (d *dnsMsg) sendQuery(dnsServer string) (dnsmessage.Message, error) {
+	// packing already configured dnsmessage
 	packet, err := d.msg.Pack()
 	if err != nil {
 		return dnsmessage.Message{}, err
@@ -23,8 +29,8 @@ func (d *dnsMsg) sendQuery(dnsServer string) (dnsmessage.Message, error) {
 	}
 	defer conn.Close()
 
-	// Set a timeout for the connection
 	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		fmt.Println("set deadline fail")
 		return dnsmessage.Message{}, err
 	}
 
@@ -34,7 +40,6 @@ func (d *dnsMsg) sendQuery(dnsServer string) (dnsmessage.Message, error) {
 		return dnsmessage.Message{}, err
 	}
 
-	// Read the response
 	buffer := make([]byte, 512)
 	n, err := conn.Read(buffer)
 	if err != nil {
@@ -51,8 +56,7 @@ func (d *dnsMsg) sendQuery(dnsServer string) (dnsmessage.Message, error) {
 	return response, nil
 }
 
-func DnsQueryTypeMX(domain string, dnsServer string) ([]string, error) {
-	// Create a DNS message for an A record lookup (IPv4)
+func DnsQueryMX(domain string, dnsServer string) ([]string, error) {
 	var dnsMessage dnsmessage.Message
 	dnsMessage.Header.RecursionDesired = true
 	dnsMessage.Questions = []dnsmessage.Question{
@@ -84,7 +88,7 @@ func DnsQueryTypeMX(domain string, dnsServer string) ([]string, error) {
 	return ips, nil
 }
 
-func DnsQueryTypeAAAA(domain string, dnsServer string) ([]string, error) {
+func DnsQueryAAAA(domain string, dnsServer string) ([]string, error) {
 	// Create a DNS message for an A record lookup (IPv4)
 	var dnsMessage dnsmessage.Message
 	dnsMessage.Header.RecursionDesired = true
@@ -116,7 +120,8 @@ func DnsQueryTypeAAAA(domain string, dnsServer string) ([]string, error) {
 
 	return ips, nil
 }
-func DnsQueryTypeCNAME(domain string, dnsServer string) (string, error) {
+
+func DnsQueryCNAME(domain string, dnsServer string) (string, error) {
 	if len(domain) == 0 {
 		return "", nil
 	}
@@ -148,7 +153,7 @@ func DnsQueryTypeCNAME(domain string, dnsServer string) (string, error) {
 	return foundCNAME, nil
 }
 
-func DnsQueryTypeA(domain string, dnsServer string) ([]string, error) {
+func DnsQueryA(domain string, dnsServer string) ([]string, error) {
 	// Create a DNS message for an A record lookup (IPv4)
 	var dnsMessage dnsmessage.Message
 	dnsMessage.Header.RecursionDesired = true

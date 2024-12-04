@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/murrrda/goSweep/pkg/helpers"
+	"github.com/murrrda/goSweep/pkg/utils"
 )
 
 type state uint8
@@ -28,9 +28,9 @@ type scan struct {
 }
 
 func TcpScan(host string, startPort, endPort int) {
-	localAddr, err := helpers.GetLocalIp()
+	localAddr, err := utils.GetLocalIp()
 	if err != nil {
-		fmt.Println(helpers.Red + err.Error() + helpers.Reset)
+		fmt.Println(utils.Red + err.Error() + utils.Reset)
 		return
 	}
 	nPorts := endPort - startPort + 1
@@ -63,7 +63,7 @@ func TcpScan(host string, startPort, endPort int) {
 		r := <-res
 		switch r.State {
 		case OPEN:
-			fmt.Printf("%sPort %s OPEN\n%s", helpers.Green, r.Port.String(), helpers.Reset)
+			fmt.Printf("%sPort %s OPEN\n%s", utils.Green, r.Port.String(), utils.Reset)
 		case FILTERED:
 			nFPorts++
 		}
@@ -94,7 +94,7 @@ func sendSynAndGetRes(localAddr *net.UDPAddr, dstIp string, dstPort uint16) (sta
 
 	dstIpNet := net.ParseIP(dstIp)
 	if dstIpNet == nil {
-		return ERR, fmt.Errorf(helpers.Red + "Couln't parse dest ip" + helpers.Reset)
+		return ERR, fmt.Errorf(utils.Red + "Couln't parse dest ip" + utils.Reset)
 	}
 
 	ip := &layers.IPv4{
@@ -112,7 +112,7 @@ func sendSynAndGetRes(localAddr *net.UDPAddr, dstIp string, dstPort uint16) (sta
 	}
 
 	if err := tcp.SetNetworkLayerForChecksum(ip); err != nil {
-		return ERR, fmt.Errorf(helpers.Red + "Couldn't compute the checksum" + helpers.Reset + "\n" + err.Error())
+		return ERR, fmt.Errorf(utils.Red + "Couldn't compute the checksum" + utils.Reset + "\n" + err.Error())
 
 	}
 	buf := gopacket.NewSerializeBuffer()
@@ -121,16 +121,16 @@ func sendSynAndGetRes(localAddr *net.UDPAddr, dstIp string, dstPort uint16) (sta
 		ComputeChecksums: true,
 	}
 	if err := gopacket.SerializeLayers(buf, opts, tcp); err != nil {
-		fmt.Println(helpers.Red + "Couldn't serialize layer" + helpers.Reset)
+		fmt.Println(utils.Red + "Couldn't serialize layer" + utils.Reset)
 		fmt.Println(err)
-		return ERR, fmt.Errorf(helpers.Red + "Couldn't serialize layer" + helpers.Reset + "\n" + err.Error())
+		return ERR, fmt.Errorf(utils.Red + "Couldn't serialize layer" + utils.Reset + "\n" + err.Error())
 	}
 
 	conn, err := net.ListenPacket("ip4:tcp", "0.0.0.0")
 	if err != nil {
-		fmt.Println(helpers.Red + "Couldn't listen" + helpers.Reset)
+		fmt.Println(utils.Red + "Couldn't listen" + utils.Reset)
 		fmt.Println(err)
-		return ERR, fmt.Errorf(helpers.Red + "Couldn't serialize layer" + helpers.Reset + "\n" + err.Error())
+		return ERR, fmt.Errorf(utils.Red + "Couldn't serialize layer" + utils.Reset + "\n" + err.Error())
 	}
 	defer conn.Close()
 

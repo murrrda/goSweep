@@ -7,9 +7,9 @@ import (
 	"os"
 
 	"github.com/murrrda/goSweep/pkg/dns"
-	"github.com/murrrda/goSweep/pkg/helpers"
 	"github.com/murrrda/goSweep/pkg/portscan"
 	"github.com/murrrda/goSweep/pkg/sweep"
+	"github.com/murrrda/goSweep/pkg/utils"
 )
 
 func main() {
@@ -33,7 +33,7 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
-		startPort, endPort, err := helpers.ParsePortRange(args[0])
+		startPort, endPort, err := utils.ParsePortRange(args[0])
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -41,7 +41,7 @@ func main() {
 
 		ips, err := net.LookupIP(*portScanFlag)
 		if err != nil {
-			fmt.Println("Coulnd't lookup your ipv4")
+			fmt.Println("Couldn't lookup your ipv4")
 			os.Exit(1)
 		}
 		ip := ips[0].To4().String()

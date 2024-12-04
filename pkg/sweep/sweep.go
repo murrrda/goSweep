@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/murrrda/goSweep/pkg/helpers"
+	"github.com/murrrda/goSweep/pkg/utils"
 )
 
 var seqNum uint32
@@ -23,7 +23,7 @@ type reply struct {
 const pingWorkers = 100
 
 func PingSweep(subnetFlag string) {
-	ips, err := helpers.GetHosts(subnetFlag)
+	ips, err := utils.GetHosts(subnetFlag)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -61,7 +61,7 @@ func PingSweep(subnetFlag string) {
 	for i := 0; i < nHosts; i++ {
 		rep := <-res
 		if rep.Did {
-			fmt.Printf("%sEcho reply from %s\n%s", helpers.Green, rep.Host, helpers.Reset)
+			fmt.Printf("%sEcho reply from %s\n%s", utils.Green, rep.Host, utils.Reset)
 		} else {
 			noRep++
 		}
