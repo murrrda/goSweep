@@ -224,6 +224,7 @@ func lookupCnameChain(domain string, dnsServerString string) ([]string, error) {
 
 	// if there is cname record for the domain
 	// we will follow the chain
+	time.Sleep(DELAY)
 	for {
 		cname, err := utils.DnsQueryCNAME(domain, dnsServerString)
 		if err != nil {
