@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/murrrda/goSweep/pkg/output"
 	"github.com/murrrda/goSweep/pkg/utils"
 )
 
@@ -27,21 +28,25 @@ type scan struct {
 	State state // OPEN(0), CLOSE(1), FILTERED
 }
 
-func printStart(host, ip string, startPort, endPort int) {
-	fmt.Println("<============================================================>")
-	fmt.Printf("GoSweep Report - Generated at %s\n", time.Now().Format("January 02, 2006 15:04:05 MST"))
-	fmt.Println("Beginning Port Scan...")
-	fmt.Println("<============================================================>")
-	fmt.Printf("Host %v (%v)\n", host, ip)
-	fmt.Printf("Port range %v:%v\n", startPort, endPort)
-	fmt.Println("<============================================================>")
+func printStart(host, ip string, startPort, endPort int, formatter output.Formatter) {
+	formatter.Header(time.Now().Format("January 02, 2006 15:04:05 MST"))
+	formatter.Info("Beggining Port Scan...\n")
+	formatter.Info(fmt.Sprintf("Host %v (%v)", host, ip))
+	formatter.Info(fmt.Sprintf("Port range %v:%v", startPort, endPort))
+	formatter.Footer()
 }
 
-func TcpScan(host, ip string, startPort, endPort int) {
-	printStart(host, ip, startPort, endPort)
+func TcpScan(host string, startPort, endPort int, formatter output.Formatter) {
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		fmt.Println("%w\n", err)
+		return
+	}
+	ip := ips[0].To4().String()
+	printStart(host, ip, startPort, endPort, formatter)
 	localAddr, err := utils.GetLocalIp()
 	if err != nil {
-		fmt.Println(utils.Red + err.Error() + utils.Reset)
+		formatter.Error(err.Error())
 		return
 	}
 	nPorts := endPort - startPort + 1
@@ -52,11 +57,11 @@ func TcpScan(host, ip string, startPort, endPort int) {
 	// spawn workers
 	if nPorts > portWorkers {
 		for i := 0; i < portWorkers; i++ {
-			go worker(res, ports, ip, localAddr)
+			go worker(res, ports, ip, localAddr, formatter)
 		}
 	} else {
 		for i := 0; i < nPorts; i++ {
-			go worker(res, ports, ip, localAddr)
+			go worker(res, ports, ip, localAddr, formatter)
 		}
 	}
 
@@ -74,23 +79,24 @@ func TcpScan(host, ip string, startPort, endPort int) {
 		r := <-res
 		switch r.State {
 		case OPEN:
-			fmt.Printf("%sPort %s OPEN\n%s", utils.Green, r.Port.String(), utils.Reset)
+			formatter.Success(fmt.Sprintf("Port %s OPEN", r.Port.String()))
+
 		case FILTERED:
 			nFPorts++
 		}
 	}
 
-	fmt.Printf("%d filtered ports (timeout)\n", nFPorts)
-	fmt.Printf("Execution time: %.2f seconds\n", time.Since(timeStart).Seconds())
-	fmt.Println("<============================================================>")
+	formatter.Info(fmt.Sprintf("%d filtered ports (timeout)", nFPorts))
+	formatter.Info(fmt.Sprintf("Execution time: %.2f seconds", time.Since(timeStart).Seconds()))
+	formatter.Footer()
 	close(res)
 }
 
-func worker(res chan scan, ports chan int, host string, localAddr *net.UDPAddr) {
+func worker(res chan scan, ports chan int, host string, localAddr *net.UDPAddr, formatter output.Formatter) {
 	for p := range ports {
 		state, err := sendSynAndGetRes(localAddr, host, uint16(p))
 		if err != nil {
-			fmt.Println(err)
+			formatter.Error(err.Error())
 			continue
 		}
 		res <- scan{
@@ -106,7 +112,7 @@ func sendSynAndGetRes(localAddr *net.UDPAddr, dstIp string, dstPort uint16) (sta
 
 	dstIpNet := net.ParseIP(dstIp)
 	if dstIpNet == nil {
-		return ERR, fmt.Errorf(utils.Red + "Couln't parse dest ip" + utils.Reset)
+		return ERR, fmt.Errorf("Couln't parse destination ip")
 	}
 
 	ip := &layers.IPv4{
@@ -124,35 +130,31 @@ func sendSynAndGetRes(localAddr *net.UDPAddr, dstIp string, dstPort uint16) (sta
 	}
 
 	if err := tcp.SetNetworkLayerForChecksum(ip); err != nil {
-		return ERR, fmt.Errorf(utils.Red + "Couldn't compute the checksum" + utils.Reset + "\n" + err.Error())
-
+		return ERR, fmt.Errorf("Couldn't compute the checksum:\n%w", err)
 	}
+
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{
 		FixLengths:       true,
 		ComputeChecksums: true,
 	}
 	if err := gopacket.SerializeLayers(buf, opts, tcp); err != nil {
-		fmt.Println(utils.Red + "Couldn't serialize layer" + utils.Reset)
-		fmt.Println(err)
-		return ERR, fmt.Errorf(utils.Red + "Couldn't serialize layer" + utils.Reset + "\n" + err.Error())
+		return ERR, fmt.Errorf("Couldn't serialize layer:\n%w", err)
 	}
 
 	conn, err := net.ListenPacket("ip4:tcp", "0.0.0.0")
 	if err != nil {
-		fmt.Println(utils.Red + "Couldn't listen" + utils.Reset)
-		fmt.Println(err)
-		return ERR, fmt.Errorf(utils.Red + "Couldn't serialize layer" + utils.Reset + "\n" + err.Error())
+		return ERR, fmt.Errorf("Couldn't listen:\n%w", err)
 	}
 	defer conn.Close()
 
 	// sending that SYN packet
 	if _, err := conn.WriteTo(buf.Bytes(), &net.IPAddr{IP: dstIpNet}); err != nil {
-		return ERR, fmt.Errorf(err.Error())
+		return ERR, fmt.Errorf("%w", err)
 	}
 
 	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
-		return ERR, fmt.Errorf(err.Error())
+		return ERR, fmt.Errorf("%w", err)
 	}
 
 	// next step is to get servers response, which can be either SYN-ACK, RST or no response at all

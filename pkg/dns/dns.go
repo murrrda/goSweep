@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/murrrda/goSweep/pkg/output"
 	"github.com/murrrda/goSweep/pkg/utils"
 )
 
@@ -36,7 +37,10 @@ type result struct {
 	foundRecord bool
 }
 
-func (r result) String() string {
+func (r result) String(formatter output.Formatter) string {
+	if !formatter.IsVerbose() {
+		return "Found: " + r.subdomain
+	}
 	builder := strings.Builder{}
 	builder.WriteString(fmt.Sprintf("Domain: %s\n", r.subdomain))
 	if len(r.A) > 0 {
@@ -87,8 +91,8 @@ type DnsInput struct {
 // output: none
 // function will read file line by line and send subdomains to workers.
 // workers will make DNS query for each subdomain and print results
-func SubdomainDiscovery(input DnsInput) {
-	printStart(input)
+func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
+	printStart(input, formatter)
 	domain := canonicalizeDomain(input.Domain)
 
 	subdomainChan := make(chan string)
@@ -106,12 +110,13 @@ func SubdomainDiscovery(input DnsInput) {
 			domain:        domain,
 			subdomainChan: subdomainChan,
 			resultChan:    resultChan,
-		})
+		}, formatter)
 	}
 
 	wordlist, err := os.Open(input.File)
 	if err != nil {
-		log.Fatal(err.Error())
+		formatter.Error(err.Error())
+		os.Exit(1)
 	}
 	defer wordlist.Close()
 
@@ -134,7 +139,7 @@ func SubdomainDiscovery(input DnsInput) {
 	go func() {
 		for r := range resultChan {
 			if r.foundRecord {
-				fmt.Println(r)
+				formatter.Success(r.String(formatter))
 			}
 		}
 		doneSignal <- struct{}{}
@@ -144,7 +149,7 @@ func SubdomainDiscovery(input DnsInput) {
 	close(resultChan)
 	<-doneSignal
 	close(doneSignal)
-	fmt.Println("<============================================================>")
+	formatter.Footer()
 }
 
 // canonicalizeDomain appends a trailing dot to the input domain if one is not already present.
@@ -251,23 +256,22 @@ func lookupCnameChain(domain string, dnsServerString string) ([]string, error) {
 	return cnames, nil
 }
 
-func worker(wg *sync.WaitGroup, t target) {
+func worker(wg *sync.WaitGroup, t target, formatter output.Formatter) {
 	defer wg.Done()
 	for subdomain := range t.subdomainChan {
 		res, err := lookupRecords(subdomain, *t.dnsServer)
 		if err != nil {
-			log.Println(err.Error())
+			formatter.Error((err.Error()))
 		}
 
 		t.resultChan <- res
 	}
 }
 
-func printStart(input DnsInput) {
-	fmt.Println("<============================================================>")
-	fmt.Printf("GoSweep Report - Generated at %s\n", time.Now().Format("January 02, 2006 15:04:05 MST"))
-	fmt.Println("Beginning Subdomain Discovery...")
-	fmt.Println("<============================================================>")
-	fmt.Printf("Domain: %v\n", input.Domain)
-	fmt.Println("<============================================================>")
+func printStart(input DnsInput, formatter output.Formatter) {
+	formatter.Header(time.Now().Format("January 02, 2006 15:04:05 MST"))
+	formatter.Info("Beggining Subdomain Discovery...\n")
+	formatter.Info(fmt.Sprintf("Domain: %v", input.Domain))
+	formatter.Info(fmt.Sprintf("Wordlist: %v", input.File))
+	formatter.Footer()
 }

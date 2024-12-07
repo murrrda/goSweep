@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net"
 	"os"
 
 	"github.com/murrrda/goSweep/pkg/dns"
+	"github.com/murrrda/goSweep/pkg/output"
 	"github.com/murrrda/goSweep/pkg/portscan"
 	"github.com/murrrda/goSweep/pkg/sweep"
 	"github.com/murrrda/goSweep/pkg/utils"
@@ -15,6 +15,7 @@ import (
 )
 
 func main() {
+	var formatter output.Formatter
 	cmd := &cli.Command{
 		Name:                  "goSweep",
 		Usage:                 "Command-line tool for network scanning",
@@ -24,6 +25,11 @@ func main() {
 			&cli.BoolFlag{
 				Name:    "verbose",
 				Aliases: []string{"v"},
+				Usage:   "More detailed output",
+			},
+			&cli.BoolFlag{
+				Name:  "no-color",
+				Usage: "Disable colorful output, recommended if writing to file",
 			},
 		},
 		Commands: []*cli.Command{
@@ -47,6 +53,16 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
+					if cmd.Bool("no-color") {
+						formatter = &output.NoColorFormatter{
+							Verbose: cmd.Bool("verbose"),
+						}
+					} else {
+						formatter = &output.ColorFormatter{
+							Verbose: cmd.Bool("verbose"),
+						}
+					}
+
 					host := cmd.String("target")
 					portRange := cmd.String("port-range")
 					startPort, endPort, err := utils.ParsePortRange(portRange)
@@ -54,14 +70,8 @@ func main() {
 						return fmt.Errorf("%v", err.Error())
 					}
 
-					ips, err := net.LookupIP(host)
-					if err != nil {
-						return fmt.Errorf("%v", err.Error())
-					}
-					ip := ips[0].To4().String()
-
 					// start scan
-					portscan.TcpScan(host, ip, startPort, endPort)
+					portscan.TcpScan(host, startPort, endPort, formatter)
 					return nil
 				},
 			},
@@ -84,10 +94,20 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
+					if cmd.Bool("no-color") {
+						formatter = &output.NoColorFormatter{
+							Verbose: cmd.Bool("verbose"),
+						}
+					} else {
+						formatter = &output.ColorFormatter{
+							Verbose: cmd.Bool("verbose"),
+						}
+					}
+
 					dns.SubdomainDiscovery(dns.DnsInput{
 						Domain: cmd.String("domain"),
 						File:   cmd.String("wordlist"),
-					})
+					}, formatter)
 					return nil
 				},
 			},
@@ -104,7 +124,17 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					sweep.PingSweep(cmd.String("network"))
+					if cmd.Bool("no-color") {
+						formatter = &output.NoColorFormatter{
+							Verbose: cmd.Bool("verbose"),
+						}
+					} else {
+						formatter = &output.ColorFormatter{
+							Verbose: cmd.Bool("verbose"),
+						}
+					}
+
+					sweep.PingSweep(cmd.String("network"), formatter)
 					return nil
 				},
 			},

@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/murrrda/goSweep/pkg/output"
 	"github.com/murrrda/goSweep/pkg/utils"
 )
 
@@ -22,23 +23,21 @@ type reply struct {
 
 const pingWorkers = 100
 
-func printStart(network, startip, finiship string) {
-	fmt.Println("<============================================================>")
-	fmt.Printf("GoSweep Report - Generated at %s\n", time.Now().Format("January 02, 2006 15:04:05 MST"))
-	fmt.Println("Beginning Host Discovery...")
-	fmt.Println("<============================================================>")
-	fmt.Printf("Network: %v\n", network)
-	fmt.Println("<============================================================>")
+func printStart(network string, formatter output.Formatter) {
+	formatter.Header(time.Now().Format("January 02, 2006 15:04:05 MST"))
+	formatter.Info("Beggining Host Discovery...\n")
+	formatter.Info(fmt.Sprintf("Network: %v", network))
+	formatter.Footer()
 }
 
-func PingSweep(network string) {
+func PingSweep(network string, formatter output.Formatter) {
+	printStart(network, formatter)
 	ips, err := utils.GetHostsFromCidr(network)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 	nHosts := len(ips)
-	printStart(network, ips[0].String(), ips[len(ips)-1].String())
 
 	hosts := make(chan net.IP)
 	res := make(chan reply)
@@ -46,11 +45,11 @@ func PingSweep(network string) {
 	// spawn workers
 	if nHosts > pingWorkers {
 		for i := 0; i < pingWorkers; i++ {
-			go worker(hosts, res)
+			go worker(hosts, res, formatter)
 		}
 	} else {
 		for i := 0; i < nHosts; i++ {
-			go worker(hosts, res)
+			go worker(hosts, res, formatter)
 		}
 	}
 
@@ -69,22 +68,22 @@ func PingSweep(network string) {
 	for i := 0; i < nHosts; i++ {
 		rep := <-res
 		if rep.Did {
-			fmt.Printf("%sEcho reply from %s\n%s", utils.Green, rep.Host, utils.Reset)
+			formatter.Success(fmt.Sprintf("Echo reply from %s", rep.Host))
 		} else {
 			noRep++
 		}
 	}
-	fmt.Println("No reply from " + fmt.Sprint(noRep) + " hosts")
-	fmt.Printf("Execution time: %.2f seconds\n", time.Since(timeStart).Seconds())
-	fmt.Println("<============================================================>")
+	formatter.Info(fmt.Sprintf("No reply from %d hosts", noRep))
+	formatter.Info(fmt.Sprintf("Execution time: %.2f seconds", time.Since(timeStart).Seconds()))
+	formatter.Footer()
 	close(res)
 }
 
-func worker(hosts chan net.IP, res chan reply) {
+func worker(hosts chan net.IP, res chan reply, formatter output.Formatter) {
 	for host := range hosts {
 		did, err := PingIP(&host)
 		if err != nil {
-			fmt.Println(err)
+			formatter.Error(err.Error())
 			res <- reply{
 				Host: host,
 				Did:  false,
@@ -113,28 +112,24 @@ func PingIP(dstIp *net.IP) (bool, error) {
 		ComputeChecksums: true,
 	}
 	if err := gopacket.SerializeLayers(buf, opts, icmp); err != nil {
-		fmt.Println("Couldn't serialize layer")
-		return false, fmt.Errorf("couldn't serialize layer: %w", err)
+		return false, fmt.Errorf("couldn't serialize layer:\n%w", err)
 	}
 
 	// Listen for ICMP packets
 	conn, err := net.ListenPacket("ip4:icmp", "0.0.0.0")
 	if err != nil {
-		fmt.Println("Couldn't listen")
-		return false, fmt.Errorf("couldn't listen: %w", err)
+		return false, fmt.Errorf("couldn't listen:\n%w", err)
 	}
 	defer conn.Close()
 
 	// Send ICMP echo request
 	if _, err := conn.WriteTo(buf.Bytes(), &net.IPAddr{IP: *dstIp}); err != nil {
-		fmt.Println("Write error")
-		return false, fmt.Errorf("write error: %w", err)
+		return false, fmt.Errorf("write error:\n%w", err)
 	}
 
 	// Set read timeout
 	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
-		fmt.Println("Set deadline error")
-		return false, fmt.Errorf("set deadline error: %w", err)
+		return false, fmt.Errorf("set deadline error:\n%w", err)
 	}
 	// next step is to get host response (if it responds)
 	for {
