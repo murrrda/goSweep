@@ -27,7 +27,18 @@ type scan struct {
 	State state // OPEN(0), CLOSE(1), FILTERED
 }
 
-func TcpScan(host string, startPort, endPort int) {
+func printStart(host, ip string, startPort, endPort int) {
+	fmt.Println("<============================================================>")
+	fmt.Printf("GoSweep Report - Generated at %s\n", time.Now().Format("January 02, 2006 15:04:05 MST"))
+	fmt.Println("Beginning Port Scan...")
+	fmt.Println("<============================================================>")
+	fmt.Printf("Host %v (%v)\n", host, ip)
+	fmt.Printf("Port range %v:%v\n", startPort, endPort)
+	fmt.Println("<============================================================>")
+}
+
+func TcpScan(host, ip string, startPort, endPort int) {
+	printStart(host, ip, startPort, endPort)
 	localAddr, err := utils.GetLocalIp()
 	if err != nil {
 		fmt.Println(utils.Red + err.Error() + utils.Reset)
@@ -41,11 +52,11 @@ func TcpScan(host string, startPort, endPort int) {
 	// spawn workers
 	if nPorts > portWorkers {
 		for i := 0; i < portWorkers; i++ {
-			go worker(res, ports, host, localAddr)
+			go worker(res, ports, ip, localAddr)
 		}
 	} else {
 		for i := 0; i < nPorts; i++ {
-			go worker(res, ports, host, localAddr)
+			go worker(res, ports, ip, localAddr)
 		}
 	}
 
@@ -71,6 +82,7 @@ func TcpScan(host string, startPort, endPort int) {
 
 	fmt.Printf("%d filtered ports (timeout)\n", nFPorts)
 	fmt.Printf("Execution time: %.2f seconds\n", time.Since(timeStart).Seconds())
+	fmt.Println("<============================================================>")
 	close(res)
 }
 

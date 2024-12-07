@@ -25,13 +25,14 @@ var dnsServerPool = [...]net.IP{
 }
 
 type result struct {
-	// evaluated subdomain
+	// enumerated subdomain
 	subdomain string
 	// records
-	A           []string
-	AAAA        []string
-	MX          []string
-	cnames      []string
+	A      []string
+	AAAA   []string
+	MX     []string
+	cnames []string
+	// true if we found any record
 	foundRecord bool
 }
 
@@ -76,7 +77,7 @@ type target struct {
 	domain        string
 }
 
-type Input struct {
+type DnsInput struct {
 	Domain string
 	File   string
 }
@@ -85,8 +86,9 @@ type Input struct {
 // input: domain, file
 // output: none
 // function will read file line by line and send subdomains to workers.
-// workers will make dns query for each subdomain and print results
-func SubdomainDiscovery(input Input) {
+// workers will make DNS query for each subdomain and print results
+func SubdomainDiscovery(input DnsInput) {
+	printStart(input)
 	domain := canonicalizeDomain(input.Domain)
 
 	subdomainChan := make(chan string)
@@ -142,6 +144,7 @@ func SubdomainDiscovery(input Input) {
 	close(resultChan)
 	<-doneSignal
 	close(doneSignal)
+	fmt.Println("<============================================================>")
 }
 
 // canonicalizeDomain appends a trailing dot to the input domain if one is not already present.
@@ -258,4 +261,13 @@ func worker(wg *sync.WaitGroup, t target) {
 
 		t.resultChan <- res
 	}
+}
+
+func printStart(input DnsInput) {
+	fmt.Println("<============================================================>")
+	fmt.Printf("GoSweep Report - Generated at %s\n", time.Now().Format("January 02, 2006 15:04:05 MST"))
+	fmt.Println("Beginning Subdomain Discovery...")
+	fmt.Println("<============================================================>")
+	fmt.Printf("Domain: %v\n", input.Domain)
+	fmt.Println("<============================================================>")
 }

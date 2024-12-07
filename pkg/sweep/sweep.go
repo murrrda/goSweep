@@ -22,15 +22,23 @@ type reply struct {
 
 const pingWorkers = 100
 
-func PingSweep(subnetFlag string) {
-	ips, err := utils.GetHosts(subnetFlag)
+func printStart(network, startip, finiship string) {
+	fmt.Println("<============================================================>")
+	fmt.Printf("GoSweep Report - Generated at %s\n", time.Now().Format("January 02, 2006 15:04:05 MST"))
+	fmt.Println("Beginning Host Discovery...")
+	fmt.Println("<============================================================>")
+	fmt.Printf("Network: %v\n", network)
+	fmt.Println("<============================================================>")
+}
+
+func PingSweep(network string) {
+	ips, err := utils.GetHostsFromCidr(network)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 	nHosts := len(ips)
-	fmt.Println("First IP addr: " + ips[0].String())
-	fmt.Println("Last IP addr: " + ips[len(ips)-1].String())
+	printStart(network, ips[0].String(), ips[len(ips)-1].String())
 
 	hosts := make(chan net.IP)
 	res := make(chan reply)
@@ -68,6 +76,7 @@ func PingSweep(subnetFlag string) {
 	}
 	fmt.Println("No reply from " + fmt.Sprint(noRep) + " hosts")
 	fmt.Printf("Execution time: %.2f seconds\n", time.Since(timeStart).Seconds())
+	fmt.Println("<============================================================>")
 	close(res)
 }
 
