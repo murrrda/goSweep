@@ -2,8 +2,8 @@ package dns
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"strings"
@@ -77,6 +77,7 @@ func (r result) String(formatter output.Formatter) string {
 type target struct {
 	resultChan    chan result
 	subdomainChan chan string
+	timeoutChan   chan string
 	dnsServer     *net.IP
 	domain        string
 }
@@ -95,60 +96,64 @@ func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 	printStart(input, formatter)
 	domain := canonicalizeDomain(input.Domain)
 
-	subdomainChan := make(chan string)
-	resultChan := make(chan result)
-	doneSignal := make(chan struct{}, 1)
+	subdomainCh := make(chan string)
+	timeoutCh := make(chan string)
+	resultCh := make(chan result)
 
-	var wg sync.WaitGroup
+	var producerWG sync.WaitGroup
+	var retryWG sync.WaitGroup
+	var resultWG sync.WaitGroup // To track the results processing goroutine
 
-	// number of workers = number of dns servers
-	// each goroutine gets specific dns server
 	for _, v := range dnsServerPool {
-		wg.Add(1)
-		go worker(&wg, target{
+		retryWG.Add(1)
+		go retryWorker(&retryWG, target{
 			dnsServer:     &v,
 			domain:        domain,
-			subdomainChan: subdomainChan,
-			resultChan:    resultChan,
+			subdomainChan: subdomainCh,
+			resultChan:    resultCh,
+			timeoutChan:   timeoutCh,
 		}, formatter)
 	}
 
-	wordlist, err := os.Open(input.File)
-	if err != nil {
-		formatter.Error(err.Error())
-		os.Exit(1)
+	// Spawn producer workers (one per DNS server)
+	for _, v := range dnsServerPool {
+		producerWG.Add(1)
+		go prodWorker(&producerWG, target{
+			dnsServer:     &v,
+			domain:        domain,
+			subdomainChan: subdomainCh,
+			resultChan:    resultCh,
+			timeoutChan:   timeoutCh,
+		}, formatter)
 	}
-	defer wordlist.Close()
-
-	// scanner for reading file
-	scanner := bufio.NewScanner(wordlist)
 
 	// send subdomains to workers
 	go func() {
-		defer close(subdomainChan) // after this routine there is no more sending value to resultChan so we can close safely
-		for scanner.Scan() {
-			sub := scanner.Text()
-			subdomainChan <- sub + "." + domain
-		}
-		if err := scanner.Err(); err != nil {
-			log.Fatal(err.Error())
+		defer close(subdomainCh) // after this routine there is no more sending value to resultChan so we can close safely
+		if err := feedSubdomains(input.File, domain, subdomainCh); err != nil {
+			formatter.Error(err.Error())
+			os.Exit(1)
 		}
 	}()
 
 	// goroutine to read results from workers
+	resultWG.Add(1)
 	go func() {
-		for r := range resultChan {
+		defer resultWG.Done()
+		for r := range resultCh {
 			if r.foundRecord {
 				formatter.Success(r.String(formatter))
 			}
 		}
-		doneSignal <- struct{}{}
 	}()
 
-	wg.Wait()
-	close(resultChan)
-	<-doneSignal
-	close(doneSignal)
+	producerWG.Wait()
+	close(timeoutCh)
+
+	retryWG.Wait()
+	close(resultCh)
+
+	resultWG.Wait()
 	formatter.Footer()
 }
 
@@ -256,16 +261,52 @@ func lookupCnameChain(domain string, dnsServerString string) ([]string, error) {
 	return cnames, nil
 }
 
-func worker(wg *sync.WaitGroup, t target, formatter output.Formatter) {
+func prodWorker(wg *sync.WaitGroup, t target, formatter output.Formatter) {
 	defer wg.Done()
 	for subdomain := range t.subdomainChan {
 		res, err := lookupRecords(subdomain, *t.dnsServer)
 		if err != nil {
-			formatter.Error((err.Error()))
+			if errors.Is(err, utils.ErrTimeout) {
+				t.timeoutChan <- subdomain
+			} else {
+				formatter.Error(err.Error())
+			}
+			continue
 		}
 
 		t.resultChan <- res
 	}
+}
+
+func retryWorker(wg *sync.WaitGroup, t target, formatter output.Formatter) {
+	defer wg.Done()
+	for subdomain := range t.timeoutChan {
+		fmt.Println(subdomain)
+		res, err := lookupRecords(subdomain, *t.dnsServer)
+		if err != nil {
+			formatter.Error(err.Error())
+			continue
+		}
+
+		t.resultChan <- res
+	}
+}
+
+func feedSubdomains(filePath, domain string, subdomainChan chan<- string) error {
+	wordlist, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer wordlist.Close()
+
+	// scanner for reading file
+	scanner := bufio.NewScanner(wordlist)
+	for scanner.Scan() {
+		sub := scanner.Text()
+		subdomainChan <- sub + "." + domain
+	}
+
+	return scanner.Err()
 }
 
 func printStart(input DnsInput, formatter output.Formatter) {
