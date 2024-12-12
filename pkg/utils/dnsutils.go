@@ -9,7 +9,7 @@ import (
 	"golang.org/x/net/dns/dnsmessage"
 )
 
-var ErrTimeout = errors.New("timeout occurred during DNS query")
+var ErrDNSTimeout = errors.New("timeout occurred during DNS query")
 
 // Wrapper around dnsmessage.Message.
 // Purpose is to attach sendQuery method to it
@@ -47,7 +47,7 @@ func (d *dnsMsg) sendQuery(dnsServer string) (dnsmessage.Message, error) {
 	n, err := conn.Read(buffer)
 	if err != nil {
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			return dnsmessage.Message{}, ErrTimeout
+			return dnsmessage.Message{}, ErrDNSTimeout
 		}
 		return dnsmessage.Message{}, err
 	}

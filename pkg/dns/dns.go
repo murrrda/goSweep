@@ -74,7 +74,7 @@ func (r result) String(formatter output.Formatter) string {
 	return builder.String()
 }
 
-type target struct {
+type DNSTarget struct {
 	resultChan    chan result
 	subdomainChan chan string
 	timeoutChan   chan string
@@ -87,30 +87,27 @@ type DnsInput struct {
 	File   string
 }
 
-// SubdomainDiscovery function
-// input: domain, file
-// output: none
-// function will read file line by line and send subdomains to workers.
-// workers will make DNS query for each subdomain and print results
 func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 	printStart(input, formatter)
 	domain := canonicalizeDomain(input.Domain)
 
 	subdomainCh := make(chan string)
 	timeoutCh := make(chan string)
-	resultCh := make(chan result)
+	resCh := make(chan result)
 
 	var producerWG sync.WaitGroup
 	var retryWG sync.WaitGroup
-	var resultWG sync.WaitGroup // To track the results processing goroutine
+	var resultWG sync.WaitGroup
 
+	// spawn retry workers
+	// Retry happens when we get timeout error
 	for _, v := range dnsServerPool {
 		retryWG.Add(1)
-		go retryWorker(&retryWG, target{
+		go retryWorker(&retryWG, DNSTarget{
 			dnsServer:     &v,
 			domain:        domain,
 			subdomainChan: subdomainCh,
-			resultChan:    resultCh,
+			resultChan:    resCh,
 			timeoutChan:   timeoutCh,
 		}, formatter)
 	}
@@ -118,11 +115,11 @@ func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 	// Spawn producer workers (one per DNS server)
 	for _, v := range dnsServerPool {
 		producerWG.Add(1)
-		go prodWorker(&producerWG, target{
+		go prodWorker(&producerWG, DNSTarget{
 			dnsServer:     &v,
 			domain:        domain,
 			subdomainChan: subdomainCh,
-			resultChan:    resultCh,
+			resultChan:    resCh,
 			timeoutChan:   timeoutCh,
 		}, formatter)
 	}
@@ -140,7 +137,7 @@ func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 	resultWG.Add(1)
 	go func() {
 		defer resultWG.Done()
-		for r := range resultCh {
+		for r := range resCh {
 			if r.foundRecord {
 				formatter.Success(r.String(formatter))
 			}
@@ -151,9 +148,10 @@ func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 	close(timeoutCh)
 
 	retryWG.Wait()
-	close(resultCh)
+	close(resCh)
 
 	resultWG.Wait()
+
 	formatter.Footer()
 }
 
@@ -261,12 +259,12 @@ func lookupCnameChain(domain string, dnsServerString string) ([]string, error) {
 	return cnames, nil
 }
 
-func prodWorker(wg *sync.WaitGroup, t target, formatter output.Formatter) {
+func prodWorker(wg *sync.WaitGroup, t DNSTarget, formatter output.Formatter) {
 	defer wg.Done()
 	for subdomain := range t.subdomainChan {
 		res, err := lookupRecords(subdomain, *t.dnsServer)
 		if err != nil {
-			if errors.Is(err, utils.ErrTimeout) {
+			if errors.Is(err, utils.ErrDNSTimeout) {
 				t.timeoutChan <- subdomain
 			} else {
 				formatter.Error(err.Error())
@@ -278,7 +276,7 @@ func prodWorker(wg *sync.WaitGroup, t target, formatter output.Formatter) {
 	}
 }
 
-func retryWorker(wg *sync.WaitGroup, t target, formatter output.Formatter) {
+func retryWorker(wg *sync.WaitGroup, t DNSTarget, formatter output.Formatter) {
 	defer wg.Done()
 	for subdomain := range t.timeoutChan {
 		fmt.Println(subdomain)
