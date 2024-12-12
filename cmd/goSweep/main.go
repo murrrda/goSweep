@@ -29,7 +29,7 @@ func main() {
 			},
 			&cli.BoolFlag{
 				Name:  "no-color",
-				Usage: "Disable colorful output, recommended if writing to file",
+				Usage: "Disable colorful output, recommended when writing to file",
 			},
 		},
 		Commands: []*cli.Command{
@@ -61,6 +61,12 @@ func main() {
 						formatter = &output.ColorFormatter{
 							Verbose: cmd.Bool("verbose"),
 						}
+					}
+
+					// we need sudo privileges for port scan
+					if os.Geteuid() != 0 {
+						formatter.Error("Not running with sudo or as root.")
+						os.Exit(1)
 					}
 
 					host := cmd.String("target")
@@ -132,6 +138,12 @@ func main() {
 						formatter = &output.ColorFormatter{
 							Verbose: cmd.Bool("verbose"),
 						}
+					}
+
+					// we need sudo privileges for port scan
+					if os.Geteuid() != 0 {
+						formatter.Error("Not running with sudo or as root.")
+						os.Exit(1)
 					}
 
 					sweep.PingSweep(cmd.String("network"), formatter)
