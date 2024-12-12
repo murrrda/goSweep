@@ -1,77 +1,81 @@
-# goSweep
+# goSweep 🧹
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/murrrda/goSweep)](https://goreportcard.com/report/github.com/murrrda/goSweep)
 
 > [!CAUTION]
-> Remember to use responsibly. Let's not accidently cause a network meltdown, shall we?
+> Remember to use responsibly. Let's not accidentally cause a network meltdown, shall we?
 
-goSweep is a command-line tool written in Go for network scanning that includes features like SYN/stealth port scanning and ping sweeping.
+GoSweep is a command-line tool written in Go for network scanning.\
+_Note: this tool has not been heavily tested and is not intended (yet) for professional use._
 
 ## Features
 
-- **TCP Port Scanning**: Concurrently performs SYN/stealth scans, which are the most efficient as they do not complete the TCP handshake.
-- **Ping sweeping**: Quickly detect live hosts within a specified network range.
+- **TCP Port Scanning**: Concurrently performs SYN (stealth) scan
+- **Ping sweeping (host discovery)**: Detect live hosts within a specified network range using ICMP
+- **DNS subdomain enumeration**: Wordlist-based brute-force subdomain discovery
 
 ## Installation
 
 To install goSweep, make sure you have Go installed and set up on your machine. Then:
 
-```sh
-git clone https://github.com/murrrda/goSweep.git
-cd goSweep
-go build -o goSweep cmd/goSweep/main.go
-```
-
-or
+##### Build from source
 
 ```sh
 git clone https://github.com/murrrda/goSweep.git
 cd goSweep
-go build -o goSweep cmd/goSweep/main.go
+go build -ldflags="-s -w" -o goSweep cmd/goSweep/main.go
 ```
 
 ## Usage
 
-### Port scanning (-ps)
+GoSweep uses a subcommand-based structure, where the primary command (`goSweep`) is followed by a specific subcommand (e.g., `ps`, `dns`, `sweep`) to perform different actions. Each subcommand has its own options for detailed control. Check `./goSweep -h` for more information
 
-To perform a port scan (requires root privileges):
+### Example Usage
 
-```sh
-./goSweep -ps <host> <port-range>
-```
+#### Port scanning (ps)
 
-- **\<host\>**: The IP address or hostname of the target.
-- **\<port-range\>**: The range of ports to scan (e.g., **1:1024**).
-
-Example:
+To perform a port scan (**requires root privileges**):
 
 ```sh
-sudo ./goSweep -ps scanme.nmap.org 1:80
+./goSweep ps --target domain --port-range range
 ```
 
-### Ping sweeping (-s)
+- **--target, -t**: The IP address or domain of the target.
+- **--port-range, -p**: The range of ports to scan (e.g., **1:1024**).
 
-To perform ping sweep (requires root privileges):
+![Port scan](./psexample.png)
+
+<br>
+
+#### Ping sweeping (sweep)
+
+To perform ping sweep (**requires root privileges**):
 
 ```sh
-./goSweep -s <network>
+./goSweep sweep --network network
 ```
 
-- **\<network\>**: The IP range to sweep (e.g., 192.168.1.0/24). **Note**: network must be provided in CIDR notation
+- **--network, -n**: The IP range to sweep (e.g., 192.168.1.0/24). **Note**: network must be provided in CIDR notation
 
-Example:
+![Ping sweep](./sweepexample.png)
+
+<br>
+
+#### DNS subdomain enumeration
+
+To perform subdomain enumeration you will need wordlist. Check [SecLists lists](https://github.com/danielmiessler/SecLists/tree/master/Discovery/DNS)
 
 ```sh
-sudo ./goSweep -s 192.168.0.1/24
+./goSweep dns --domain domain --wordlist /path/to/wordlist.txt
 ```
 
-## Example output
+- **--domain, -d**: The domain of the target
+- **--wordlist, -w**: Path to newline separated file of subdomains
 
-#### Port scanning
+![Ping sweep](./dnsexample.png)
 
-![Port scan](./port_scan.png)
+<br>
 
-#### Ping sweep
+Use verbose flag for detailed output
 
-![Ping sweep](./ping_sweep.png)
-
+![Ping sweep](./dnsverboseexample.png)
