@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 
 	"github.com/murrrda/goSweep/pkg/dns"
 	"github.com/murrrda/goSweep/pkg/output"
@@ -13,6 +14,17 @@ import (
 	"github.com/murrrda/goSweep/pkg/utils"
 	"github.com/urfave/cli/v3"
 )
+
+func hasAdminPrivileges() bool {
+	switch runtime.GOOS {
+	case "linux", "darwin": // Unix-based OS (Linux, macOS)
+		return os.Geteuid() == 0
+	case "windows": // Windows
+		return true
+	default:
+		return false
+	}
+}
 
 func main() {
 	var formatter output.Formatter
@@ -64,7 +76,7 @@ func main() {
 					}
 
 					// we need sudo privileges for port scan
-					if os.Geteuid() != 0 {
+					if !hasAdminPrivileges() {
 						formatter.Error("Not running with sudo or as root.")
 						os.Exit(1)
 					}
@@ -141,7 +153,7 @@ func main() {
 					}
 
 					// we need sudo privileges for port scan
-					if os.Geteuid() != 0 {
+					if !hasAdminPrivileges() {
 						formatter.Error("Not running with sudo or as root.")
 						os.Exit(1)
 					}
