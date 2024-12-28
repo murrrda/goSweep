@@ -12,7 +12,7 @@ _Note: this tool has not been heavily tested and is not intended (yet) for profe
 
 - **TCP Port Scanning**: Concurrently performs SYN (stealth) scan
 - **Ping sweeping (host discovery)**: Detect live hosts within a specified network range using ICMP
-- **DNS subdomain enumeration**: Wordlist-based brute-force subdomain discovery
+- **DNS subdomain enumeration**: Wordlist-based brute-force subdomain discovery with wildcard support
 
 ## Installation
 
