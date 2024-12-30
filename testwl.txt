@@ -3,3 +3,5 @@ ns
 blog
 pop3
 dev
+scanme
+foo.bar
