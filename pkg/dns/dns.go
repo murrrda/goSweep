@@ -164,7 +164,7 @@ func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 	// send subdomains to workers
 	go func() {
 		defer close(domainCh) // after this routine there is no more sending value to resultChan so we can close safely
-		if err := feedSubdomains(input.File, domain, domainCh); err != nil {
+		if err := feedSubdomains(input.File, domain, domainCh, formatter); err != nil {
 			formatter.Error(err.Error())
 			os.Exit(1)
 		}
@@ -333,7 +333,7 @@ func retryWorker(wg *sync.WaitGroup, t targetDNS, formatter output.Formatter) {
 
 }
 
-func feedSubdomains(filePath, domain string, domainCh chan<- subWCard) error {
+func feedSubdomains(filePath, domain string, domainCh chan<- subWCard, formatter output.Formatter) error {
 	wordlist, err := os.Open(filePath)
 	if err != nil {
 		return err
@@ -350,7 +350,7 @@ func feedSubdomains(filePath, domain string, domainCh chan<- subWCard) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			feeder(entries, domainCh, domain, &check)
+			feeder(entries, domainCh, domain, &check, formatter)
 		}()
 	}
 
@@ -368,16 +368,16 @@ func feedSubdomains(filePath, domain string, domainCh chan<- subWCard) error {
 	return scanner.Err()
 }
 
-func feeder(entries <-chan string, domainCh chan<- subWCard, domain string, check *sync.Map) {
+func feeder(entries <-chan string, domainCh chan<- subWCard, domain string, check *sync.Map, formatter output.Formatter) {
 	for subdomain := range entries {
-		v := wCardLookup(subdomain, domain, check)
+		v := wCardLookup(subdomain, domain, check, formatter)
 		v.domain = subdomain + "." + domain
 		domainCh <- v
 	}
 }
 
 // wCardLookup checks if the subdomain has wildcard records
-func wCardLookup(subdomain, domain string, check *sync.Map) subWCard {
+func wCardLookup(subdomain, domain string, check *sync.Map, formatter output.Formatter) subWCard {
 	swp := wildcardDeepestSubdomain(subdomain)
 	randDomain := "unlikely-" + strconv.Itoa(time.Now().Nanosecond()) + "-" + subdomain + "." + domain
 
@@ -404,6 +404,9 @@ func wCardLookup(subdomain, domain string, check *sync.Map) subWCard {
 
 	if existing, loaded := check.LoadOrStore(swp, rec); loaded {
 		return existing.(subWCard)
+	}
+	if !rec.A || !rec.AAAA || !rec.CNAME {
+		formatter.Warning(fmt.Sprintf("Wildcard DNS detected: %v\nOmitting all lookups that match %v", swp+"."+domain, swp+"."+domain))
 	}
 
 	return rec
