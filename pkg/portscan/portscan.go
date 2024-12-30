@@ -1,14 +1,18 @@
 package portscan
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
+	"os"
+	"sync"
 	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/murrrda/goSweep/pkg/helpers"
+	"github.com/murrrda/goSweep/pkg/output"
+	"github.com/murrrda/goSweep/pkg/utils"
 )
 
 type state uint8
@@ -22,34 +26,105 @@ const (
 	ERR
 )
 
-type scan struct {
+type scanRes struct {
 	Port  layers.TCPPort
 	State state // OPEN(0), CLOSE(1), FILTERED
 }
 
-func TcpScan(host string, startPort, endPort int) {
-	localAddr, err := helpers.GetLocalAddr()
+type TCPTarget struct {
+	timeoutCh chan int
+	ports     chan int
+	resCh     chan scanRes
+	pubAddr   *net.UDPAddr
+	host      string
+}
+
+func printStart(host, ip string, startPort, endPort int, formatter output.Formatter) {
+	formatter.Header(time.Now().Format("January 02, 2006 15:04:05 MST"))
+	formatter.Info("Beggining Port Scan...\n")
+	formatter.Info(fmt.Sprintf("Host %v (%v)", host, ip))
+	formatter.Info(fmt.Sprintf("Port range %v:%v", startPort, endPort))
+	formatter.Footer()
+}
+
+func TcpScan(host string, startPort, endPort int, formatter output.Formatter) {
+	ip, err := getHostIP(host)
 	if err != nil {
-		fmt.Println(helpers.Red + err.Error() + helpers.Reset)
+		fmt.Println(err.Error())
 		return
 	}
+
+	printStart(host, ip, startPort, endPort, formatter)
+
+	pubAddr, err := utils.GetMyPublicIP()
+	if err != nil {
+		formatter.Error(err.Error())
+		return
+	}
+
 	nPorts := endPort - startPort + 1
 
 	ports := make(chan int)
-	res := make(chan scan)
+	timeoutCh := make(chan int)
+	resCh := make(chan scanRes)
 
-	// spawn workers
+	var producerWG sync.WaitGroup
+	var retryWG sync.WaitGroup
+	var resWG sync.WaitGroup
+
+	// spawn retry workers
+	if nPorts > portWorkers {
+		for i := 0; i < portWorkers/3; i++ {
+			retryWG.Add(1)
+			go retryWorker(&retryWG, TCPTarget{
+				timeoutCh: timeoutCh,
+				host:      ip,
+				pubAddr:   pubAddr,
+				resCh:     resCh,
+				ports:     ports,
+			})
+		}
+	} else {
+		for i := 0; i < nPorts/3; i++ {
+			retryWG.Add(1)
+			go retryWorker(&retryWG, TCPTarget{
+				timeoutCh: timeoutCh,
+				host:      ip,
+				pubAddr:   pubAddr,
+				resCh:     resCh,
+				ports:     ports,
+			})
+		}
+	}
+
+	// spawn producer workers
 	if nPorts > portWorkers {
 		for i := 0; i < portWorkers; i++ {
-			go worker(res, ports, host, localAddr)
+			producerWG.Add(1)
+			go prodWorker(&producerWG, TCPTarget{
+				timeoutCh: timeoutCh,
+				host:      ip,
+				pubAddr:   pubAddr,
+				resCh:     resCh,
+				ports:     ports,
+			}, formatter)
 		}
 	} else {
 		for i := 0; i < nPorts; i++ {
-			go worker(res, ports, host, localAddr)
+			producerWG.Add(1)
+			go prodWorker(&producerWG, TCPTarget{
+				timeoutCh: timeoutCh,
+				host:      ip,
+				pubAddr:   pubAddr,
+				resCh:     resCh,
+				ports:     ports,
+			}, formatter)
 		}
 	}
 
 	timeStart := time.Now()
+
+	// send ports to workers
 	go func() {
 		for p := startPort; p <= endPort; p++ {
 			ports <- p
@@ -59,29 +134,68 @@ func TcpScan(host string, startPort, endPort int) {
 	}()
 
 	nFPorts := 0 // number of filtered ports
-	for i := 0; i < nPorts; i++ {
-		r := <-res
-		switch r.State {
-		case OPEN:
-			fmt.Printf("%sPort %s OPEN\n%s", helpers.Green, r.Port.String(), helpers.Reset)
-		case FILTERED:
-			nFPorts++
-		}
-	}
+	// read results from workers
+	resWG.Add(1)
+	go func() {
+		for i := 0; i < nPorts; i++ {
+			r := <-resCh
+			switch r.State {
+			case OPEN:
+				formatter.Success(fmt.Sprintf("Port %s OPEN", r.Port.String()))
 
-	fmt.Printf("%d filtered ports (timeout)\n", nFPorts)
-	fmt.Printf("Execution time: %.2f seconds\n", time.Since(timeStart).Seconds())
-	close(res)
+			case FILTERED:
+				nFPorts++
+			}
+		}
+		resWG.Done()
+	}()
+
+	producerWG.Wait()
+	close(timeoutCh)
+
+	retryWG.Wait()
+	close(resCh)
+
+	resWG.Wait()
+
+	formatter.Info(fmt.Sprintf("%d filtered ports (timeout)", nFPorts))
+	formatter.Info(fmt.Sprintf("Execution time: %.2f seconds", time.Since(timeStart).Seconds()))
+	formatter.Footer()
 }
 
-func worker(res chan scan, ports chan int, host string, localAddr *net.UDPAddr) {
-	for p := range ports {
-		state, err := sendSynAndGetRes(localAddr, host, uint16(p))
+func getHostIP(host string) (string, error) {
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return "", err
+	}
+	ip := ips[0].To4().String()
+	return ip, nil
+}
+
+func prodWorker(wg *sync.WaitGroup, t TCPTarget, formatter output.Formatter) {
+	defer wg.Done()
+	for p := range t.ports {
+		state, err := sendSynAndGetRes(t.pubAddr, t.host, uint16(p))
 		if err != nil {
-			fmt.Println(err)
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				t.timeoutCh <- p
+			} else {
+				formatter.Error(err.Error())
+			}
 			continue
 		}
-		res <- scan{
+		t.resCh <- scanRes{
+			Port:  layers.TCPPort(p),
+			State: state,
+		}
+	}
+}
+
+func retryWorker(wg *sync.WaitGroup, t TCPTarget) {
+	defer wg.Done()
+	for p := range t.timeoutCh {
+		state, _ := sendSynAndGetRes(t.pubAddr, t.host, uint16(p))
+		t.resCh <- scanRes{
 			Port:  layers.TCPPort(p),
 			State: state,
 		}
@@ -94,7 +208,7 @@ func sendSynAndGetRes(localAddr *net.UDPAddr, dstIp string, dstPort uint16) (sta
 
 	dstIpNet := net.ParseIP(dstIp)
 	if dstIpNet == nil {
-		return ERR, fmt.Errorf(helpers.Red + "Couln't parse dest ip" + helpers.Reset)
+		return ERR, fmt.Errorf("Couln't parse destination ip")
 	}
 
 	ip := &layers.IPv4{
@@ -106,48 +220,44 @@ func sendSynAndGetRes(localAddr *net.UDPAddr, dstIp string, dstPort uint16) (sta
 	tcp := &layers.TCP{
 		SrcPort: layers.TCPPort(srcPort),
 		DstPort: layers.TCPPort(dstPort),
-		Seq:     1105024978,
+		Seq:     rand.Uint32(),
 		SYN:     true,
 		Window:  14600,
 	}
 
 	if err := tcp.SetNetworkLayerForChecksum(ip); err != nil {
-		return ERR, fmt.Errorf(helpers.Red + "Couldn't compute the checksum" + helpers.Reset + "\n" + err.Error())
-
+		return ERR, fmt.Errorf("Couldn't compute the checksum:\n%w", err)
 	}
+
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{
 		FixLengths:       true,
 		ComputeChecksums: true,
 	}
 	if err := gopacket.SerializeLayers(buf, opts, tcp); err != nil {
-		fmt.Println(helpers.Red + "Couldn't serialize layer" + helpers.Reset)
-		fmt.Println(err)
-		return ERR, fmt.Errorf(helpers.Red + "Couldn't serialize layer" + helpers.Reset + "\n" + err.Error())
+		return ERR, fmt.Errorf("Couldn't serialize layer:\n%w", err)
 	}
 
 	conn, err := net.ListenPacket("ip4:tcp", "0.0.0.0")
 	if err != nil {
-		fmt.Println(helpers.Red + "Couldn't listen" + helpers.Reset)
-		fmt.Println(err)
-		return ERR, fmt.Errorf(helpers.Red + "Couldn't serialize layer" + helpers.Reset + "\n" + err.Error())
+		return ERR, fmt.Errorf("Couldn't listen:\n%w", err)
 	}
 	defer conn.Close()
 
 	// sending that SYN packet
 	if _, err := conn.WriteTo(buf.Bytes(), &net.IPAddr{IP: dstIpNet}); err != nil {
-		return ERR, fmt.Errorf(err.Error())
+		return ERR, fmt.Errorf("%w", err)
 	}
 
-	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
-		return ERR, fmt.Errorf(err.Error())
+	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		return ERR, fmt.Errorf("%w", err)
 	}
 
 	// next step is to get servers response, which can be either SYN-ACK, RST or no response at all
 	for {
 		b := make([]byte, 4096)
 		if n, _, err := conn.ReadFrom(b); err != nil {
-			return FILTERED, nil
+			return FILTERED, err
 		} else {
 			packet := gopacket.NewPacket(b[:n], layers.LayerTypeTCP, gopacket.Default)
 			if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {

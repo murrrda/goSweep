@@ -1,4 +1,4 @@
-package helpers
+package utils
 
 import (
 	"fmt"
@@ -19,12 +19,12 @@ const (
 	White  = "\033[97m"
 )
 
-// Find local IP address
-func GetLocalAddr() (*net.UDPAddr, error) {
+// Find your public IP
+func GetMyPublicIP() (*net.UDPAddr, error) {
 	// 8.8.8.8 - Google DNS server
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
-		return nil, fmt.Errorf(err.Error())
+		return nil, fmt.Errorf("%v", err)
 	}
 	defer conn.Close()
 
@@ -72,13 +72,12 @@ func NextIP(ip *net.IP) {
 }
 
 // Get all hosts from CIDR representation of a network
-func GetHosts(cidr string) ([]net.IP, error) {
+func GetHostsFromCidr(cidr string) ([]net.IP, error) {
 	ip, ipNet, err := net.ParseCIDR(cidr)
 
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("Network: " + ipNet.String())
 
 	if ip.To4() == nil {
 		return nil, fmt.Errorf("You should provide valid IPv4 address")
