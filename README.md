@@ -27,15 +27,25 @@ _Note: this tool has not been heavily tested and is not intended (yet) for profe
 
 ## Installation
 
-To install goSweep, make sure you have Go installed and set up on your machine. Then:
+### Build from source
 
-##### Build from source
+To install goSweep, make sure you have Go installed and set up on your machine. Then:
 
 ```sh
 git clone https://github.com/murrrda/goSweep.git
 cd goSweep
 go build -ldflags="-s -w" -o goSweep cmd/goSweep/main.go
 ```
+
+### Docker
+
+You can pull a prebuilt Docker image from Docker Hub:
+
+```sh
+docker pull aleksamrda/gosweep
+```
+
+When using the DNS feature, you will need to mount your wordlist file to the container. For example: `-v /path/to/wordlist.txt:/app/wordlist.txt`
 
 ## Usage
 
