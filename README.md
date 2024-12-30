@@ -13,8 +13,8 @@ _Note: this tool has not been heavily tested and is not intended (yet) for profe
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
-  - [Port Scanning (ps)](<#port-scanning-(ps)>)
-  - [Ping Sweeping (sweep)](<#ping-sweeping-(sweep)>)
+  - [Port Scanning (ps)](#port-scanning)
+  - [Ping Sweeping (sweep)](#ping-sweeping)
   - [DNS Subdomain Enumeration](#dns-subdomain-enumeration)
 - [Next steps](#next-steps)
 - [Contributing](#contributing)
@@ -40,9 +40,9 @@ go build -ldflags="-s -w" -o goSweep cmd/goSweep/main.go
 ## Usage
 
 GoSweep uses a subcommand-based structure, where the primary command (`goSweep`) is followed by a specific subcommand (e.g., `ps`, `dns`, `sweep`) to perform different actions. Each subcommand has its own options for detailed control. Check `./goSweep -h` for more information.\
-_Please use --no-color flag when piping output to files_
+**Please use --no-color flag when piping output to files**
 
-### Port scanning (ps)
+### Port scanning
 
 To perform a port scan (**requires root privileges**):
 
@@ -59,7 +59,7 @@ Note: does not work on Windows yet.
 
 <br>
 
-### Ping sweeping (sweep)
+### Ping sweeping
 
 To perform ping sweep (**requires root privileges**):
 
