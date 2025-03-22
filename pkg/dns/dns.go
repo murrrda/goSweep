@@ -34,55 +34,6 @@ var dnsServerPool = [...]net.IP{
 	net.ParseIP("208.67.222.222"), // open DNS
 }
 
-type ResultDNS struct {
-	// enumerated subdomain
-	subdomain string
-	// records
-	A      []string
-	AAAA   []string
-	MX     []string
-	cnames []string
-	// true if we found any record
-	foundRecord bool
-}
-
-func (r ResultDNS) String(formatter output.Formatter) string {
-	if !formatter.IsVerbose() {
-		return "Found: " + r.subdomain
-	}
-	builder := strings.Builder{}
-	builder.WriteString(fmt.Sprintf("Domain: %s\n", r.subdomain))
-	if len(r.A) > 0 {
-		builder.WriteString("\tA records:\n")
-		for _, ip := range r.A {
-			builder.WriteString(fmt.Sprintf("\t\t%s\n", ip))
-		}
-	}
-	if len(r.AAAA) > 0 {
-		builder.WriteString("\tAAAA records:\n")
-		for _, ip := range r.AAAA {
-			builder.WriteString(fmt.Sprintf("\t\t%s\n", ip))
-		}
-	}
-	if len(r.MX) > 0 {
-		builder.WriteString("\tMX records:\n")
-		for _, mx := range r.MX {
-			builder.WriteString(fmt.Sprintf("\t\t%s\n", mx))
-		}
-	}
-	if len(r.cnames) > 0 {
-		builder.WriteString("\tCNAME records:\n\t\t")
-		n := len(r.cnames)
-		for i := 0; i < n-1; i++ {
-			builder.WriteString(r.cnames[i] + " -> ")
-
-		}
-		builder.WriteString(r.cnames[n-1] + "\n")
-	}
-
-	return builder.String()
-}
-
 type targetDNS struct {
 	resultChan  chan ResultDNS
 	domainCh    chan subWCard
@@ -91,8 +42,9 @@ type targetDNS struct {
 }
 
 type DnsInput struct {
-	Domain string
-	File   string
+	Domain         string
+	SubdomainsFile string
+	ServersFile    string
 }
 
 // SubdomainDiscovery orchestrates the subdomain enumeration process using multiple DNS servers.
@@ -164,7 +116,7 @@ func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 	// send subdomains to workers
 	go func() {
 		defer close(domainCh) // after this routine there is no more sending value to resultChan so we can close safely
-		if err := feedSubdomains(input.File, domain, domainCh, formatter); err != nil {
+		if err := feedSubdomains(input.SubdomainsFile, domain, domainCh, formatter); err != nil {
 			formatter.Error(err.Error())
 			os.Exit(1)
 		}
@@ -428,6 +380,6 @@ func printStart(input DnsInput, formatter output.Formatter) {
 	formatter.Header(time.Now().Format("January 02, 2006 15:04:05 MST"))
 	formatter.Info("Beggining Subdomain Discovery...\n")
 	formatter.Info(fmt.Sprintf("Domain: %v", input.Domain))
-	formatter.Info(fmt.Sprintf("Wordlist: %v", input.File))
+	formatter.Info(fmt.Sprintf("Wordlist: %v", input.SubdomainsFile))
 	formatter.Footer()
 }
