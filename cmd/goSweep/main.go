@@ -114,7 +114,7 @@ func main() {
 						Name:     "servers",
 						Aliases:  []string{"s"},
 						Required: false,
-						Usage:    "Comma separated list of DNS servers to use",
+						Usage:    "Newline separated list of DNS servers to use",
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {

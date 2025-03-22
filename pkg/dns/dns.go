@@ -27,13 +27,6 @@ type subWCard struct {
 	domain string
 }
 
-var dnsServerPool = [...]net.IP{
-	net.ParseIP("8.8.8.8"),        // google
-	net.ParseIP("1.1.1.1"),        // cloudflare
-	net.ParseIP("9.9.9.9"),        // quad9
-	net.ParseIP("208.67.222.222"), // open DNS
-}
-
 type targetDNS struct {
 	resultChan  chan ResultDNS
 	domainCh    chan subWCard
@@ -81,6 +74,7 @@ type DnsInput struct {
 func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 	printStart(input, formatter)
 	domain := canonicalizeDomain(input.Domain)
+	dnsServerPool := initializeServerPool(input)
 
 	domainCh := make(chan subWCard, 100)
 	timeoutCh := make(chan subWCard, 10)
@@ -116,13 +110,13 @@ func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 	// send subdomains to workers
 	go func() {
 		defer close(domainCh) // after this routine there is no more sending value to resultChan so we can close safely
-		if err := feedSubdomains(input.SubdomainsFile, domain, domainCh, formatter); err != nil {
+		if err := feedSubdomains(input.SubdomainsFile, dnsServerPool, domain, domainCh, formatter); err != nil {
 			formatter.Error(err.Error())
 			os.Exit(1)
 		}
 	}()
 
-	// goroutine to read results from workers
+	// goroutine to read and print results from workers
 	resultWG.Add(1)
 	go func() {
 		defer resultWG.Done()
@@ -285,7 +279,7 @@ func retryWorker(wg *sync.WaitGroup, t targetDNS, formatter output.Formatter) {
 
 }
 
-func feedSubdomains(filePath, domain string, domainCh chan<- subWCard, formatter output.Formatter) error {
+func feedSubdomains(filePath string, dnsServerPool []net.IP, domain string, domainCh chan<- subWCard, formatter output.Formatter) error {
 	wordlist, err := os.Open(filePath)
 	if err != nil {
 		return err
@@ -374,6 +368,36 @@ func wildcardDeepestSubdomain(input string) string {
 
 	// Return "*." followed by everything after the first dot
 	return "*." + input[firstDot+1:]
+}
+
+func initializeServerPool(input DnsInput) []net.IP {
+	dnsServerPool := []net.IP{
+		net.ParseIP("8.8.8.8"),        // google
+		net.ParseIP("1.1.1.1"),        // cloudflare
+		net.ParseIP("9.9.9.9"),        // quad9
+		net.ParseIP("208.67.222.222"), // open DNS
+	}
+
+	if input.ServersFile != "" {
+		file, err := os.Open(input.ServersFile)
+		if err != nil {
+			fmt.Println("Error opening file:", err)
+			os.Exit(1)
+		}
+		defer file.Close()
+		// clear defaults
+		dnsServerPool = []net.IP{}
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			ip := net.ParseIP(scanner.Text())
+			if ip != nil {
+				dnsServerPool = append(dnsServerPool, ip)
+			}
+		}
+	}
+
+	return dnsServerPool
 }
 
 func printStart(input DnsInput, formatter output.Formatter) {
