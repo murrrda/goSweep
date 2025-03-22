@@ -110,6 +110,12 @@ func main() {
 						Required: true,
 						Usage:    "Path to newline separated file of subdomains",
 					},
+					&cli.StringFlag{
+						Name:     "servers",
+						Aliases:  []string{"s"},
+						Required: false,
+						Usage:    "Newline separated list of DNS servers to use",
+					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					if cmd.Bool("no-color") {
@@ -123,8 +129,9 @@ func main() {
 					}
 
 					dns.SubdomainDiscovery(dns.DnsInput{
-						Domain: cmd.String("domain"),
-						File:   cmd.String("wordlist"),
+						Domain:         cmd.String("domain"),
+						SubdomainsFile: cmd.String("wordlist"),
+						ServersFile:    cmd.String("servers"),
 					}, formatter)
 					return nil
 				},

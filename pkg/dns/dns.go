@@ -27,62 +27,6 @@ type subWCard struct {
 	domain string
 }
 
-var dnsServerPool = [...]net.IP{
-	net.ParseIP("8.8.8.8"),        // google
-	net.ParseIP("1.1.1.1"),        // cloudflare
-	net.ParseIP("9.9.9.9"),        // quad9
-	net.ParseIP("208.67.222.222"), // open DNS
-}
-
-type ResultDNS struct {
-	// enumerated subdomain
-	subdomain string
-	// records
-	A      []string
-	AAAA   []string
-	MX     []string
-	cnames []string
-	// true if we found any record
-	foundRecord bool
-}
-
-func (r ResultDNS) String(formatter output.Formatter) string {
-	if !formatter.IsVerbose() {
-		return "Found: " + r.subdomain
-	}
-	builder := strings.Builder{}
-	builder.WriteString(fmt.Sprintf("Domain: %s\n", r.subdomain))
-	if len(r.A) > 0 {
-		builder.WriteString("\tA records:\n")
-		for _, ip := range r.A {
-			builder.WriteString(fmt.Sprintf("\t\t%s\n", ip))
-		}
-	}
-	if len(r.AAAA) > 0 {
-		builder.WriteString("\tAAAA records:\n")
-		for _, ip := range r.AAAA {
-			builder.WriteString(fmt.Sprintf("\t\t%s\n", ip))
-		}
-	}
-	if len(r.MX) > 0 {
-		builder.WriteString("\tMX records:\n")
-		for _, mx := range r.MX {
-			builder.WriteString(fmt.Sprintf("\t\t%s\n", mx))
-		}
-	}
-	if len(r.cnames) > 0 {
-		builder.WriteString("\tCNAME records:\n\t\t")
-		n := len(r.cnames)
-		for i := 0; i < n-1; i++ {
-			builder.WriteString(r.cnames[i] + " -> ")
-
-		}
-		builder.WriteString(r.cnames[n-1] + "\n")
-	}
-
-	return builder.String()
-}
-
 type targetDNS struct {
 	resultChan  chan ResultDNS
 	domainCh    chan subWCard
@@ -91,8 +35,9 @@ type targetDNS struct {
 }
 
 type DnsInput struct {
-	Domain string
-	File   string
+	Domain         string
+	SubdomainsFile string
+	ServersFile    string
 }
 
 // SubdomainDiscovery orchestrates the subdomain enumeration process using multiple DNS servers.
@@ -129,6 +74,7 @@ type DnsInput struct {
 func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 	printStart(input, formatter)
 	domain := canonicalizeDomain(input.Domain)
+	dnsServerPool := initializeServerPool(input)
 
 	domainCh := make(chan subWCard, 100)
 	timeoutCh := make(chan subWCard, 10)
@@ -164,13 +110,13 @@ func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 	// send subdomains to workers
 	go func() {
 		defer close(domainCh) // after this routine there is no more sending value to resultChan so we can close safely
-		if err := feedSubdomains(input.File, domain, domainCh, formatter); err != nil {
+		if err := feedSubdomains(input.SubdomainsFile, dnsServerPool, domain, domainCh, formatter); err != nil {
 			formatter.Error(err.Error())
 			os.Exit(1)
 		}
 	}()
 
-	// goroutine to read results from workers
+	// goroutine to read and print results from workers
 	resultWG.Add(1)
 	go func() {
 		defer resultWG.Done()
@@ -333,7 +279,7 @@ func retryWorker(wg *sync.WaitGroup, t targetDNS, formatter output.Formatter) {
 
 }
 
-func feedSubdomains(filePath, domain string, domainCh chan<- subWCard, formatter output.Formatter) error {
+func feedSubdomains(filePath string, dnsServerPool []net.IP, domain string, domainCh chan<- subWCard, formatter output.Formatter) error {
 	wordlist, err := os.Open(filePath)
 	if err != nil {
 		return err
@@ -424,10 +370,40 @@ func wildcardDeepestSubdomain(input string) string {
 	return "*." + input[firstDot+1:]
 }
 
+func initializeServerPool(input DnsInput) []net.IP {
+	dnsServerPool := []net.IP{
+		net.ParseIP("8.8.8.8"),        // google
+		net.ParseIP("1.1.1.1"),        // cloudflare
+		net.ParseIP("9.9.9.9"),        // quad9
+		net.ParseIP("208.67.222.222"), // open DNS
+	}
+
+	if input.ServersFile != "" {
+		file, err := os.Open(input.ServersFile)
+		if err != nil {
+			fmt.Println("Error opening file:", err)
+			os.Exit(1)
+		}
+		defer file.Close()
+		// clear defaults
+		dnsServerPool = []net.IP{}
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			ip := net.ParseIP(scanner.Text())
+			if ip != nil {
+				dnsServerPool = append(dnsServerPool, ip)
+			}
+		}
+	}
+
+	return dnsServerPool
+}
+
 func printStart(input DnsInput, formatter output.Formatter) {
 	formatter.Header(time.Now().Format("January 02, 2006 15:04:05 MST"))
 	formatter.Info("Beggining Subdomain Discovery...\n")
 	formatter.Info(fmt.Sprintf("Domain: %v", input.Domain))
-	formatter.Info(fmt.Sprintf("Wordlist: %v", input.File))
+	formatter.Info(fmt.Sprintf("Wordlist: %v", input.SubdomainsFile))
 	formatter.Footer()
 }
