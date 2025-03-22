@@ -30,10 +30,6 @@ func (f *NoColorFormatter) Error(message string) {
 	fmt.Println(message)
 }
 
-func (f *NoColorFormatter) Result(result string) {
-	fmt.Println(result)
-}
-
 func (f *NoColorFormatter) Footer() {
 	fmt.Println("<============================================================>")
 }
