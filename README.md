@@ -61,7 +61,6 @@ cd goSweep
 go build -ldflags="-s -w" -o goSweep cmd/goSweep/main.go
 ```
 
-
 ## Usage
 
 GoSweep uses a subcommand-based structure, where the primary command (`goSweep`) is followed by a specific subcommand (e.g., `ps`, `dns`, `sweep`) to perform different actions. Each subcommand has its own options for detailed control. Check `./goSweep -h` for more information.\
@@ -119,8 +118,14 @@ Wildcard detection
 
 ## Next steps
 
+- [x] Add CLI flag to allow users to provide a custom list of DNS servers for subdomain enumeration
 - [ ] Implement port scan support for Windows
-- [ ] Add CLI flag to allow users to provide a custom list of DNS servers for subdomain enumeration
+- [ ] Improve detection avoidance algorithm for DNS enumeration
+  - [ ] Add randomized request timing (50-300ms ± jitter)
+  - [ ] Implement DNS query type rotation
+  - [ ] Add DNS-over-HTTPS transport option
+  - [ ] Insert decoy queries to common legitimate subdomains
+  - [ ] Add exponential backoff on rate limit detection
 
 ## Contributing
 
