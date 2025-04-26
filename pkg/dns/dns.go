@@ -73,8 +73,8 @@ type DnsInput struct {
 //	void: The function does not return any value. It outputs results directly via the formatter.
 func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 	printStart(input, formatter)
-	domain := canonicalizeDomain(input.Domain)
-	dnsServerPool := initializeServerPool(input)
+	targetDomain := canonicalizeDomain(input.Domain)
+	dnsServers := initializeDnsServers(input)
 
 	domainCh := make(chan subWCard, 100)
 	timeoutCh := make(chan subWCard, 10)
@@ -86,7 +86,7 @@ func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 
 	// spawn retry workers
 	// Retry happens when we get timeout error
-	for _, v := range dnsServerPool {
+	for _, v := range dnsServers {
 		retryWG.Add(1)
 		go retryWorker(&retryWG, targetDNS{
 			dnsServer:   &v,
@@ -97,7 +97,7 @@ func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 	}
 
 	// Spawn producer workers (one per DNS server)
-	for _, v := range dnsServerPool {
+	for _, v := range dnsServers {
 		producerWG.Add(1)
 		go prodWorker(&producerWG, targetDNS{
 			dnsServer:   &v,
@@ -110,7 +110,7 @@ func SubdomainDiscovery(input DnsInput, formatter output.Formatter) {
 	// send subdomains to workers
 	go func() {
 		defer close(domainCh) // after this routine there is no more sending value to resultChan so we can close safely
-		if err := feedSubdomains(input.SubdomainsFile, dnsServerPool, domain, domainCh, formatter); err != nil {
+		if err := checkSubdomains(input.SubdomainsFile, dnsServers, targetDomain, domainCh, formatter); err != nil {
 			formatter.Error(err.Error())
 			os.Exit(1)
 		}
@@ -279,8 +279,14 @@ func retryWorker(wg *sync.WaitGroup, t targetDNS, formatter output.Formatter) {
 
 }
 
-func feedSubdomains(filePath string, dnsServerPool []net.IP, domain string, domainCh chan<- subWCard, formatter output.Formatter) error {
-	wordlist, err := os.Open(filePath)
+// CheckSubdomains reads subdomain candidates from a wordlist file and coordinates workers
+// to validate them against DNS wildcards.
+//
+// Workers (one per DNS server in dnsServers) perform concurrent wildcard validation
+// using a shared cache to avoid redundant DNS lookups. Processed subdomains with their
+// wildcard status are sent to domainCh by the workers.
+func checkSubdomains(wordlistPath string, dnsServers []net.IP, targetDomain string, domainCh chan<- subWCard, formatter output.Formatter) error {
+	wordlist, err := os.Open(wordlistPath)
 	if err != nil {
 		return err
 	}
@@ -289,14 +295,14 @@ func feedSubdomains(filePath string, dnsServerPool []net.IP, domain string, doma
 	// channel to send subdomains to wildcard lookup workers
 	var entries = make(chan string, 100)
 	// map to store wildcard lookup results
-	var check sync.Map
+	var wCardCache sync.Map
 
 	var wg sync.WaitGroup
-	for range dnsServerPool {
+	for range dnsServers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			feeder(entries, domainCh, domain, &check, formatter)
+			wCardLookupWorker(entries, domainCh, targetDomain, &wCardCache, formatter)
 		}()
 	}
 
@@ -314,20 +320,21 @@ func feedSubdomains(filePath string, dnsServerPool []net.IP, domain string, doma
 	return scanner.Err()
 }
 
-func feeder(entries <-chan string, domainCh chan<- subWCard, domain string, check *sync.Map, formatter output.Formatter) {
+// wCardLookupWorker is one of the wildcard lookup workers
+func wCardLookupWorker(entries <-chan string, domainCh chan<- subWCard, targetDomain string, wCardCache *sync.Map, formatter output.Formatter) {
 	for subdomain := range entries {
-		v := wCardLookup(subdomain, domain, check, formatter)
-		v.domain = subdomain + "." + domain
+		v := wCardLookup(subdomain, targetDomain, wCardCache, formatter)
+		v.domain = subdomain + "." + targetDomain
 		domainCh <- v
 	}
 }
 
 // wCardLookup checks if the subdomain has wildcard records
-func wCardLookup(subdomain, domain string, check *sync.Map, formatter output.Formatter) subWCard {
+func wCardLookup(subdomain, targetDomain string, wCardCache *sync.Map, formatter output.Formatter) subWCard {
 	swp := wildcardDeepestSubdomain(subdomain)
-	randDomain := "unlikely-" + strconv.Itoa(time.Now().Nanosecond()) + "-" + subdomain + "." + domain
+	randDomain := "unlikely-" + strconv.Itoa(time.Now().Nanosecond()) + "-" + subdomain + "." + targetDomain
 
-	if val, ok := check.Load(swp); ok {
+	if val, ok := wCardCache.Load(swp); ok {
 		return val.(subWCard)
 	}
 
@@ -348,11 +355,11 @@ func wCardLookup(subdomain, domain string, check *sync.Map, formatter output.For
 		rec.CNAME = false
 	}
 
-	if existing, loaded := check.LoadOrStore(swp, rec); loaded {
+	if existing, loaded := wCardCache.LoadOrStore(swp, rec); loaded {
 		return existing.(subWCard)
 	}
 	if !rec.A || !rec.AAAA || !rec.CNAME {
-		formatter.Warning(fmt.Sprintf("Wildcard DNS detected: %v\nOmitting all lookups that match %v", swp+"."+domain, swp+"."+domain))
+		formatter.Warning(fmt.Sprintf("Wildcard DNS detected: %v\nOmitting all lookups that match %v", swp+"."+targetDomain, swp+"."+targetDomain))
 	}
 
 	return rec
@@ -370,8 +377,8 @@ func wildcardDeepestSubdomain(input string) string {
 	return "*." + input[firstDot+1:]
 }
 
-func initializeServerPool(input DnsInput) []net.IP {
-	dnsServerPool := []net.IP{
+func initializeDnsServers(input DnsInput) []net.IP {
+	dnsServers := []net.IP{
 		net.ParseIP("8.8.8.8"),        // google
 		net.ParseIP("1.1.1.1"),        // cloudflare
 		net.ParseIP("9.9.9.9"),        // quad9
@@ -386,18 +393,18 @@ func initializeServerPool(input DnsInput) []net.IP {
 		}
 		defer file.Close()
 		// clear defaults
-		dnsServerPool = []net.IP{}
+		dnsServers = []net.IP{}
 
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			ip := net.ParseIP(scanner.Text())
 			if ip != nil {
-				dnsServerPool = append(dnsServerPool, ip)
+				dnsServers = append(dnsServers, ip)
 			}
 		}
 	}
 
-	return dnsServerPool
+	return dnsServers
 }
 
 func printStart(input DnsInput, formatter output.Formatter) {
