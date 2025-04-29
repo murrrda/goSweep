@@ -217,6 +217,7 @@ func lookupCnameChain(domain string, dnsServerString string) ([]string, error) {
 		return nil, err
 	}
 	if len(cname) == 0 {
+		time.Sleep(DELAY)
 		return cnames, nil
 	}
 	cnames = append(cnames, cname)
