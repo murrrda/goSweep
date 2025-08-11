@@ -5,6 +5,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -96,4 +97,8 @@ func GetHostsFromCidr(cidr string) ([]net.IP, error) {
 	}
 
 	return ips, nil
+}
+
+func RandomSleep() {
+	time.Sleep(200 * time.Millisecond)
 }

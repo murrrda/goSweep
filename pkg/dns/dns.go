@@ -166,6 +166,10 @@ func lookupRecords(subdomain subWCard, dnsServer net.IP) (ResultDNS, error) {
 	if subdomain.A {
 		A, err := utils.DnsQueryA(subdomain.domain, dnsServerString)
 		if err != nil {
+			// sleep only if timeout error
+			if errors.Is(err, utils.ErrDNSTimeout) {
+				time.Sleep(DELAY)
+			}
 			return ResultDNS{}, err
 		}
 		if len(A) > 0 {
@@ -178,6 +182,10 @@ func lookupRecords(subdomain subWCard, dnsServer net.IP) (ResultDNS, error) {
 	if subdomain.AAAA {
 		AAAA, err := utils.DnsQueryAAAA(subdomain.domain, dnsServerString)
 		if err != nil {
+			// sleep only if timeout error
+			if errors.Is(err, utils.ErrDNSTimeout) {
+				time.Sleep(DELAY)
+			}
 			return ResultDNS{}, err
 		}
 		if len(AAAA) > 0 {
